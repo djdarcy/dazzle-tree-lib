@@ -165,3 +165,14 @@ revisions/
 # Private content (auto-added)
 /revisions/
 
+
+# RepoKit Private Content Protection (DO NOT REMOVE)
+.env.private
+CLAUDE.md
+**/private_*
+private/temp/
+private/docs/
+test_runs/
+test-runs/
+private/notes/
+private/claude/
