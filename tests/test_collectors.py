@@ -12,11 +12,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Any, Optional, List, Dict
 
-from dazzletreelib.core import TreeNode
-from dazzletreelib.core.collector import DataCollector
-from dazzletreelib.adapters.filesystem import FileSystemNode, FileSystemAdapter
-from dazzletreelib.config import TraversalConfig, DataRequirement
-from dazzletreelib.planning import ExecutionPlan
+from dazzletreelib.sync.core import TreeNode
+from dazzletreelib.sync.core.collector import DataCollector
+from dazzletreelib.sync.adapters.filesystem import FileSystemNode, FileSystemAdapter
+from dazzletreelib.sync.config import TraversalConfig, DataRequirement
+from dazzletreelib.sync.planning import ExecutionPlan
 
 
 class BasicCollector(DataCollector):

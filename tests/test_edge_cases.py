@@ -14,7 +14,7 @@ import stat
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dazzletreelib import (
+from dazzletreelib.sync import (
     FileSystemNode,
     FileSystemAdapter,
     TraversalConfig,
@@ -22,7 +22,7 @@ from dazzletreelib import (
     CapabilityMismatchError,
     traverse_tree,
 )
-from dazzletreelib.config import DepthConfig
+from dazzletreelib.sync.config import DepthConfig
 
 
 class TestEmptyStructures(unittest.TestCase):
@@ -471,8 +471,8 @@ class TestErrorHandling(unittest.TestCase):
         
     def test_capability_mismatch(self):
         """Test capability mismatch detection."""
-        from dazzletreelib.planning import DataCapability
-        from dazzletreelib.config import DataRequirement
+        from dazzletreelib.sync.planning import DataCapability
+        from dazzletreelib.sync.config import DataRequirement
         
         # Create mock adapter that doesn't support full data
         class LimitedAdapter(FileSystemAdapter):

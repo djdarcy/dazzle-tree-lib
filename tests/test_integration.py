@@ -11,11 +11,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any
 
-from dazzletreelib.core import TreeNode
-from dazzletreelib.adapters.filesystem import FileSystemNode, FileSystemAdapter, FilteredFileSystemAdapter
-from dazzletreelib.config import TraversalConfig, DataRequirement, TraversalStrategy, DepthConfig
-from dazzletreelib.planning import ExecutionPlan
-from dazzletreelib.core.collector import DataCollector
+from dazzletreelib.sync.core import TreeNode
+from dazzletreelib.sync.adapters.filesystem import FileSystemNode, FileSystemAdapter, FilteredFileSystemAdapter
+from dazzletreelib.sync.config import TraversalConfig, DataRequirement, TraversalStrategy, DepthConfig
+from dazzletreelib.sync.planning import ExecutionPlan
+from dazzletreelib.sync.core.collector import DataCollector
 
 
 class FolderDateTimeFixAdapter:
@@ -346,7 +346,7 @@ class TestIntegration(unittest.TestCase):
     
     def test_execution_plan_validation(self):
         """Test that ExecutionPlan validates incompatible options."""
-        from dazzletreelib.planning import CapabilityMismatchError
+        from dazzletreelib.sync.planning import CapabilityMismatchError
         
         # Test incompatible configuration
         adapter = FileSystemAdapter()

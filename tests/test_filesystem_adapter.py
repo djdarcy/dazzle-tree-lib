@@ -15,8 +15,8 @@ import time
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dazzletreelib import FileSystemNode, FileSystemAdapter
-from dazzletreelib.adapters.filesystem import FilteredFileSystemAdapter
+from dazzletreelib.sync import FileSystemNode, FileSystemAdapter
+from dazzletreelib.sync.adapters.filesystem import FilteredFileSystemAdapter
 
 
 class TestFileSystemNode(unittest.TestCase):
@@ -362,8 +362,8 @@ class TestModificationTimeTracking(unittest.TestCase):
         
     def test_collect_all_mtimes_in_tree(self):
         """Test collecting all modification times in a tree (for deep scan)."""
-        from dazzletreelib import traverse_tree, collect_tree_data
-        from dazzletreelib import DataRequirement
+        from dazzletreelib.sync import traverse_tree, collect_tree_data
+        from dazzletreelib.sync import DataRequirement
         
         adapter = FileSystemAdapter()
         root = FileSystemNode(self.test_path)
@@ -389,7 +389,7 @@ class TestModificationTimeTracking(unittest.TestCase):
         
     def test_shallow_vs_deep_scan(self):
         """Test difference between shallow and deep timestamp calculation."""
-        from dazzletreelib import traverse_tree
+        from dazzletreelib.sync import traverse_tree
         
         adapter = FileSystemAdapter()
         root = FileSystemNode(self.test_path)
@@ -444,7 +444,7 @@ class TestPathFiltering(unittest.TestCase):
         
     def test_include_filter(self):
         """Test including only specific patterns."""
-        from dazzletreelib import traverse_tree
+        from dazzletreelib.sync import traverse_tree
         
         adapter = FileSystemAdapter()
         root = FileSystemNode(self.test_path)
@@ -463,7 +463,7 @@ class TestPathFiltering(unittest.TestCase):
             
     def test_exclude_filter(self):
         """Test excluding specific patterns."""
-        from dazzletreelib import traverse_tree
+        from dazzletreelib.sync import traverse_tree
         
         adapter = FileSystemAdapter()
         root = FileSystemNode(self.test_path)
@@ -485,7 +485,7 @@ class TestPathFiltering(unittest.TestCase):
         
     def test_combined_include_exclude(self):
         """Test combining include and exclude filters."""
-        from dazzletreelib import traverse_tree
+        from dazzletreelib.sync import traverse_tree
         
         adapter = FileSystemAdapter()
         root = FileSystemNode(self.test_path)

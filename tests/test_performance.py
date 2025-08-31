@@ -15,13 +15,13 @@ from typing import Dict, Any, List
 import random
 import string
 
-from dazzletreelib.core import TreeNode
-from dazzletreelib.adapters.filesystem import FileSystemNode, FileSystemAdapter
-from dazzletreelib.config import (
+from dazzletreelib.sync.core import TreeNode
+from dazzletreelib.sync.adapters.filesystem import FileSystemNode, FileSystemAdapter
+from dazzletreelib.sync.config import (
     TraversalConfig, DataRequirement, TraversalStrategy, 
     PerformanceConfig, DepthConfig
 )
-from dazzletreelib.planning import ExecutionPlan
+from dazzletreelib.sync.planning import ExecutionPlan
 
 
 class PerformanceMetrics:

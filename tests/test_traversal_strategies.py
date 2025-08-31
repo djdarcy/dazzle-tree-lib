@@ -12,7 +12,7 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from dazzletreelib import (
+from dazzletreelib.sync import (
     FileSystemNode,
     FileSystemAdapter,
     TraversalConfig,
@@ -21,9 +21,9 @@ from dazzletreelib import (
     DataRequirement,
     traverse_tree,
 )
-from dazzletreelib.adapters.filesystem import FilteredFileSystemAdapter
-from dazzletreelib.config import DepthConfig, FilterConfig, PerformanceConfig
-from dazzletreelib.core.traverser import (
+from dazzletreelib.sync.adapters.filesystem import FilteredFileSystemAdapter
+from dazzletreelib.sync.config import DepthConfig, FilterConfig, PerformanceConfig
+from dazzletreelib.sync.core.traverser import (
     BreadthFirstTraverser,
     DepthFirstPreOrderTraverser,
     DepthFirstPostOrderTraverser,
@@ -485,7 +485,7 @@ class TestFolderDateTimeFixScenarios(unittest.TestCase):
         
     def test_shallow_timestamp_calculation(self):
         """Test shallow timestamp calculation (immediate children only)."""
-        from dazzletreelib import collect_tree_data
+        from dazzletreelib.sync import collect_tree_data
         
         # Use filtered adapter to exclude .git
         adapter = FilteredFileSystemAdapter(exclude_dirs={'.git'})
