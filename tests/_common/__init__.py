@@ -1,0 +1,1 @@
+"""Common test infrastructure for sync/async contract testing."""
