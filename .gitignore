@@ -140,6 +140,7 @@ credentials.json
 
 # Add custom patterns below
 
+
 # Adoption-specific sensitive files
 Clipboard Text*
 nul
@@ -160,3 +161,7 @@ convos/
 logs/
 private/
 revisions/
+
+# Private content (auto-added)
+/revisions/
+
