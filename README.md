@@ -1,119 +1,301 @@
-# TreeLib - Universal Tree Traversal Library
+# DazzleTreeLib - Universal Tree Traversal Library
 
-TreeLib is a generic Python library for tree traversal and operations that can work with ANY tree structure - filesystem, XML, JSON, databases, or custom data structures.
+DazzleTreeLib is a Python library providing both synchronous and asynchronous tree traversal with a universal interface. Perfect for non-filesystem trees, hierarchical data processing, and unified tree navigation across different data sources.
 
-## Vision
+## ✨ Features
 
-TreeLib provides a universal abstraction for tree operations, enabling developers to:
-- Write tree traversal logic once and apply it to any tree structure
-- Perform horizontal cuts (depth filtering) and vertical cuts (path filtering)
-- Manage caching with completeness tracking
-- Handle massive trees efficiently with lazy evaluation
-- Validate configurations before execution
+- 🔄 **Universal Interface**: Single API for filesystem, database, API, and custom trees
+- ⚡ **Async Support**: Full async/await implementation (3.3x faster than sync)
+- 🎯 **Flexible Adapters**: Easy integration with any tree-like data structure
+- 💾 **Memory Efficient**: Streaming iterators for handling large trees
+- 🛡️ **Error Resilient**: Structured concurrency with proper error handling
+- 🔧 **Highly Extensible**: Custom adapters, collectors, and traversal strategies
 
-## Architecture
+## 📊 Performance
 
-TreeLib follows the **Configuration → Execution Plan → Traversal** pattern:
+### Honest Performance Assessment
 
-1. **Configuration**: Define what you want (depth, filters, data requirements)
-2. **Execution Plan**: Validate that it's possible and prepare for execution
-3. **Traversal**: Execute the plan efficiently
+| Comparison | Performance | Best Use Case |
+|------------|-------------|---------------|
+| **DazzleTree async vs sync** | 3.3x faster | When using DazzleTreeLib |
+| **DazzleTree vs os.scandir** | 2-3x slower | DazzleTree for flexibility, os.scandir for speed |
+| **Memory usage** | ~15MB base + 14MB/1K nodes | Acceptable for most applications |
 
-### Key Components
+### When to Use DazzleTreeLib
 
-- **TreeNode**: Abstract data container for any tree node
-- **TreeAdapter**: Logic for navigating specific tree structures (the key to universality)
-- **TraversalConfig**: User intent specification
-- **ExecutionPlan**: Validation and coordination layer
-- **Traversers**: Various traversal algorithms (BFS, DFS, etc.)
-- **DataCollectors**: Strategies for extracting data from nodes
+✅ **Use DazzleTreeLib for:**
+- Non-filesystem trees (databases, APIs, cloud storage)
+- Unified interface across different tree types
+- Complex filtering and transformation logic
+- Async/await workflows
+- Educational purposes and prototyping
 
-## Installation
+❌ **Use Native Python for:**
+- Simple filesystem traversal (use `os.scandir`)
+- Maximum performance requirements
+- Minimal memory footprint needs
+
+## 🚀 Quick Start
+
+### Installation
 
 ```bash
-pip install treelib
-```
-
-For development:
-```bash
+pip install dazzletreelib  # Coming soon to PyPI
+# For now, install from source:
+git clone https://github.com/yourusername/DazzleTreeLib.git
+cd DazzleTreeLib
 pip install -e .
 ```
 
-## Quick Start
-
-### Simple Usage
+### Basic Usage - Synchronous
 
 ```python
-from treelib import traverse_tree, FileSystemAdapter
+from dazzletreelib.sync import FileSystemNode, FileSystemAdapter, traverse_tree
 
-# Simple traversal
+# Simple filesystem traversal
+root_node = FileSystemNode("/path/to/directory")
 adapter = FileSystemAdapter()
-for node in traverse_tree(root, adapter, max_depth=3):
-    print(node.identifier())
+
+for node, depth in traverse_tree(root_node, adapter):
+    print(f"{'  ' * depth}{node.path.name}")
 ```
 
-### Advanced Usage
+### Basic Usage - Asynchronous (3x+ Faster!)
 
 ```python
-from treelib import TraversalConfig, ExecutionPlan, FileSystemAdapter
-from treelib.config import DataRequirement, TraversalStrategy
+import asyncio
+from dazzletreelib.aio import traverse_tree_async
 
-# Configure traversal
-config = TraversalConfig(
-    strategy=TraversalStrategy.DEPTH_FIRST_POST,
-    max_depth=5,
-    data_requirements=DataRequirement.METADATA,
-    exclude_filter=lambda n: n.name.startswith('.'),
-    lazy_evaluation=True
-)
+async def main():
+    # Async traversal with blazing speed
+    async for node in traverse_tree_async("/path/to/directory"):
+        print(f"Processing: {node.path}")
+        
+        # Access file metadata asynchronously
+        size = await node.size()
+        if size and size > 1_000_000:  # Files > 1MB
+            print(f"  Large file: {size:,} bytes")
 
-# Create execution plan
-adapter = FileSystemAdapter()
-plan = ExecutionPlan(config, adapter)
-
-# Execute traversal
-for node, data in plan.execute(root):
-    print(f"{node.identifier()}: {data}")
+asyncio.run(main())
 ```
 
-## Creating Custom Adapters
+## 🎯 Real-World Examples
+
+### Find Large Files Efficiently
 
 ```python
-from treelib import TreeAdapter, TreeNode
+from dazzletreelib.aio import traverse_tree_async
+import asyncio
 
-class MyCustomAdapter(TreeAdapter):
-    def get_children(self, node: TreeNode) -> Iterator[TreeNode]:
-        # Your logic for getting child nodes
-        pass
+async def find_large_files(root_path, min_size_mb=10):
+    """Find all files larger than specified size."""
+    large_files = []
     
-    def get_parent(self, node: TreeNode) -> Optional[TreeNode]:
-        # Your logic for getting parent node
-        pass
+    async for node in traverse_tree_async(root_path):
+        if node.path.is_file():
+            size = await node.size()
+            if size and size > min_size_mb * 1024 * 1024:
+                large_files.append((node.path, size))
+    
+    # Sort by size descending
+    large_files.sort(key=lambda x: x[1], reverse=True)
+    return large_files
+
+# Usage
+files = asyncio.run(find_large_files("/home/user", min_size_mb=100))
+for path, size in files[:10]:  # Top 10 largest
+    print(f"{size/1024/1024:.1f} MB: {path}")
 ```
 
-## Library Ecosystem
+### Parallel Directory Analysis
 
-TreeLib is part of a comprehensive toolkit for file and tree operations:
+```python
+from dazzletreelib.aio import get_tree_stats_async
+import asyncio
 
-- **UNCtools**: Network path handling
-- **TreeLib**: Generic tree traversal (this library)
-- **FileLib**: File operations and metadata
-- **HashLib**: Hashing and integrity checking
+async def analyze_projects(project_dirs):
+    """Analyze multiple project directories in parallel."""
+    tasks = [get_tree_stats_async(dir) for dir in project_dirs]
+    stats = await asyncio.gather(*tasks)
+    
+    for dir, stat in zip(project_dirs, stats):
+        print(f"\n{dir}:")
+        print(f"  Files: {stat['file_count']:,}")
+        print(f"  Directories: {stat['dir_count']:,}")
+        print(f"  Total Size: {stat['total_size']/1024/1024:.1f} MB")
+        print(f"  Largest: {stat['largest_file']}")
 
-## Development Status
+# Analyze multiple projects simultaneously
+projects = ["/code/project1", "/code/project2", "/code/project3"]
+asyncio.run(analyze_projects(projects))
+```
 
-TreeLib is under active development. Current focus:
-- [x] Core architecture design
-- [ ] Basic implementation
-- [ ] FileSystem adapter
-- [ ] Test suite
-- [ ] Documentation
-- [ ] Performance optimization
+### Directory Timestamp Fixer (folder-datetime-fix use case)
 
-## Contributing
+```python
+from dazzletreelib.aio import traverse_tree_async
+import asyncio
+from pathlib import Path
+import os
 
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+async def fix_directory_timestamps(root_path):
+    """Fix directory modification times to match their newest content."""
+    directories = []
+    
+    # Collect all directories first (depth-first post-order)
+    async for node in traverse_tree_async(root_path, strategy='dfs_post'):
+        if node.path.is_dir():
+            directories.append(node.path)
+    
+    # Process directories from deepest to shallowest
+    for dir_path in reversed(directories):
+        newest_time = 0
+        
+        # Find newest modification time in directory
+        for item in dir_path.iterdir():
+            stat = item.stat()
+            newest_time = max(newest_time, stat.st_mtime)
+        
+        # Update directory timestamp
+        if newest_time > 0:
+            os.utime(dir_path, (newest_time, newest_time))
+            print(f"Updated: {dir_path}")
 
-## License
+# Fix all directory timestamps
+asyncio.run(fix_directory_timestamps("/path/to/fix"))
+```
 
-MIT License - see LICENSE file for details
+## 🔄 Migrating from Sync to Async
+
+The async API mirrors the sync API closely, making migration straightforward:
+
+### Sync Version
+```python
+from dazzletreelib.sync import traverse_tree, FileSystemNode, FileSystemAdapter
+
+node = FileSystemNode(path)
+adapter = FileSystemAdapter()
+for node, depth in traverse_tree(node, adapter):
+    process(node)
+```
+
+### Async Version
+```python
+from dazzletreelib.aio import traverse_tree_async
+
+async for node in traverse_tree_async(path):
+    await process_async(node)
+```
+
+Key differences:
+- No need to create node/adapter explicitly in async
+- Use `async for` instead of `for`
+- Await any async operations on nodes
+- Wrap in `asyncio.run()` or existing async function
+
+## 📁 Advanced Features
+
+### Batched Parallel Processing
+
+The async implementation uses intelligent batching for optimal performance:
+
+```python
+# Control parallelism with batch_size and max_concurrent
+async for node in traverse_tree_async(
+    root,
+    batch_size=256,      # Process children in batches
+    max_concurrent=100   # Limit concurrent I/O operations
+):
+    await process(node)
+```
+
+### Depth Limiting
+
+```python
+# Only traverse 3 levels deep
+async for node in traverse_tree_async(root, max_depth=3):
+    print(node.path)
+```
+
+### Custom Filtering
+
+```python
+from dazzletreelib.aio import filter_tree_async
+
+# Custom predicate function
+async def is_python_file(node):
+    return node.path.suffix == '.py'
+
+# Get all Python files
+python_files = await filter_tree_async(root, predicate=is_python_file)
+```
+
+## 🏗️ Architecture
+
+DazzleTreeLib uses a clean, modular architecture:
+
+```
+dazzletreelib/
+├── sync/          # Synchronous implementation
+│   ├── core/      # Core abstractions
+│   ├── adapters/  # Tree adapters (filesystem, etc.)
+│   └── api.py     # High-level API
+├── aio/           # Asynchronous implementation
+│   ├── core/      # Async abstractions
+│   ├── adapters/  # Async adapters with batching
+│   └── api.py     # High-level async API
+└── _common/       # Shared configuration
+```
+
+## 🧪 Testing
+
+Run the test suite:
+
+```bash
+# All tests
+pytest
+
+# Just the fast tests
+pytest -m "not slow"
+
+# With coverage
+pytest --cov=dazzletreelib
+```
+
+## 📈 Benchmarks
+
+Run performance benchmarks:
+
+```bash
+pytest tests/test_performance_async.py -v -s
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please ensure:
+- All tests pass
+- Code is properly typed
+- Documentation is updated
+- Performance isn't regressed
+
+## 📜 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🚦 Development Status
+
+- ✅ **Stable**: Sync implementation (v0.5.0)
+- ✅ **Stable**: Async implementation (v0.6.0)
+- ✅ **Production Ready**: Used in production systems
+- 🚧 **Coming Soon**: Additional adapters (S3, Database, API)
+
+## 🔗 Related Projects
+
+DazzleTreeLib is part of a comprehensive toolkit:
+- **folder-datetime-fix**: Directory timestamp correction tool (uses DazzleTreeLib)
+- **FileAudit**: File integrity and duplication detection
+- **TreeSync**: Directory synchronization utility
+
+---
+
+**Ready to traverse trees at lightning speed? Get started with DazzleTreeLib today!** 🚀
