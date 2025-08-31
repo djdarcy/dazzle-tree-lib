@@ -23,6 +23,10 @@ from .adapters import (
     AsyncFileSystemAdapter,
     AsyncFilteredFileSystemAdapter,
 )
+from .adapters.fast_filesystem import (
+    FastAsyncFileSystemAdapter,
+    FastAsyncFileSystemNode,
+)
 
 
 async def traverse_tree_async(
@@ -30,7 +34,9 @@ async def traverse_tree_async(
     strategy: str = 'bfs',
     max_depth: Optional[int] = None,
     max_concurrent: int = 100,
-    batch_size: int = 256
+    batch_size: int = 256,
+    use_stat_cache: bool = True,
+    use_fast_adapter: bool = True
 ) -> AsyncIterator[AsyncFileSystemNode]:
     """Traverse a filesystem tree asynchronously.
     
@@ -40,15 +46,23 @@ async def traverse_tree_async(
         max_depth: Maximum depth to traverse
         max_concurrent: Maximum concurrent I/O operations
         batch_size: Number of children to process in parallel
+        use_stat_cache: Use stat caching for better performance
+        use_fast_adapter: Use fast scandir-based adapter (default: True)
         
     Yields:
         AsyncFileSystemNode objects in traversal order
     """
-    root_node = AsyncFileSystemNode(root)
-    adapter = AsyncFileSystemAdapter(
-        max_concurrent=max_concurrent,
-        batch_size=batch_size
-    )
+    # Use fast adapter by default for better performance
+    if use_fast_adapter:
+        adapter = FastAsyncFileSystemAdapter()
+        root_node = FastAsyncFileSystemNode(root)
+    else:
+        adapter = AsyncFileSystemAdapter(
+            max_concurrent=max_concurrent,
+            batch_size=batch_size,
+            use_stat_cache=use_stat_cache
+        )
+        root_node = AsyncFileSystemNode(root, adapter.stat_cache)
     
     if strategy == 'bfs':
         traverser = AsyncBreadthFirstTraverser()

@@ -6,9 +6,72 @@ Uses TaskGroup pattern for structured concurrency.
 
 import asyncio
 import os
+import time
 from pathlib import Path
-from typing import AsyncIterator, Dict, Any, Optional, Set, List
+from typing import AsyncIterator, Dict, Any, Optional, Set, List, Tuple
 from ..core import AsyncTreeNode, AsyncTreeAdapter
+
+
+class StatCache:
+    """Global stat cache to reduce duplicate syscalls.
+    
+    Caches stat results with optional TTL to balance
+    performance and consistency.
+    """
+    
+    def __init__(self, ttl: float = 0.1):
+        """Initialize stat cache.
+        
+        Args:
+            ttl: Time-to-live in seconds (0.1 = 100ms default)
+        """
+        self.ttl = ttl
+        self._cache: Dict[Path, Tuple[os.stat_result, float]] = {}
+        self.hits = 0
+        self.misses = 0
+    
+    async def get_stat(self, path: Path) -> Optional[os.stat_result]:
+        """Get cached or fresh stat result.
+        
+        Args:
+            path: Path to stat
+            
+        Returns:
+            Stat result or None if error
+        """
+        now = time.time()
+        
+        # Check cache
+        if path in self._cache:
+            stat, timestamp = self._cache[path]
+            if now - timestamp < self.ttl:
+                self.hits += 1
+                return stat
+        
+        # Cache miss or expired
+        self.misses += 1
+        try:
+            stat = await asyncio.to_thread(path.stat)
+            self._cache[path] = (stat, now)
+            return stat
+        except (OSError, IOError):
+            return None
+    
+    def clear(self):
+        """Clear the cache."""
+        self._cache.clear()
+        self.hits = 0
+        self.misses = 0
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get cache statistics."""
+        total = self.hits + self.misses
+        return {
+            'hits': self.hits,
+            'misses': self.misses,
+            'hit_rate': self.hits / total if total > 0 else 0,
+            'cached_paths': len(self._cache),
+        }
 
 
 class AsyncFileSystemNode(AsyncTreeNode):
@@ -18,15 +81,17 @@ class AsyncFileSystemNode(AsyncTreeNode):
     async metadata access for non-blocking I/O.
     """
     
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, stat_cache: Optional[StatCache] = None):
         """Initialize filesystem node.
         
         Args:
             path: Path to the file or directory
+            stat_cache: Optional shared stat cache for performance
         """
         self.path = Path(path) if not isinstance(path, Path) else path
         self._stat_cache: Optional[os.stat_result] = None
         self._metadata_cache: Optional[Dict[str, Any]] = None
+        self._shared_cache = stat_cache  # Use shared cache if provided
     
     async def identifier(self) -> str:
         """Get unique identifier (absolute path).
@@ -108,14 +173,27 @@ class AsyncFileSystemNode(AsyncTreeNode):
     async def _get_stat(self) -> Optional[os.stat_result]:
         """Get cached or fresh stat information.
         
+        Uses caching to avoid duplicate stat calls, which is a major
+        performance bottleneck. This significantly reduces syscalls.
+        
         Returns:
             Stat result or None if file doesn't exist
         """
+        # Check local cache first
         if self._stat_cache is not None:
             return self._stat_cache
         
+        # Use shared cache if available
+        if self._shared_cache:
+            stat = await self._shared_cache.get_stat(self.path)
+            if stat:
+                self._stat_cache = stat  # Also cache locally
+            return stat
+        
+        # Fall back to direct stat call
         try:
             # Use asyncio.to_thread for async stat
+            # This is cached for the lifetime of the node object
             self._stat_cache = await asyncio.to_thread(self.path.stat)
             return self._stat_cache
         except (OSError, IOError):
@@ -137,7 +215,9 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
         self,
         max_concurrent: int = 100,
         batch_size: int = 256,
-        follow_symlinks: bool = False
+        follow_symlinks: bool = False,
+        use_stat_cache: bool = True,
+        cache_ttl: float = 0.1
     ):
         """Initialize filesystem adapter.
         
@@ -145,11 +225,14 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
             max_concurrent: Maximum concurrent I/O operations
             batch_size: Number of children to process in parallel per batch
             follow_symlinks: Whether to follow symbolic links
+            use_stat_cache: Whether to use global stat caching
+            cache_ttl: Cache time-to-live in seconds
         """
         super().__init__(max_concurrent)
         self.batch_size = batch_size
         self.follow_symlinks = follow_symlinks
         self._root_cache: Dict[str, AsyncFileSystemNode] = {}
+        self.stat_cache = StatCache(cache_ttl) if use_stat_cache else None
     
     async def get_children(
         self,
@@ -226,7 +309,7 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
                 if not self.follow_symlinks and path.is_symlink():
                     return None
                 
-                return AsyncFileSystemNode(path)
+                return AsyncFileSystemNode(path, self.stat_cache)
                 
             except (OSError, PermissionError):
                 # File might have been deleted or inaccessible
@@ -250,7 +333,7 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
         if parent_path == node.path:
             return None
         
-        return AsyncFileSystemNode(parent_path)
+        return AsyncFileSystemNode(parent_path, self.stat_cache)
     
     async def get_depth(self, node: AsyncFileSystemNode) -> int:
         """Get depth of node from root.
@@ -318,6 +401,11 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
             'follow_symlinks': self.follow_symlinks,
             'cached_roots': len(self._root_cache),
         })
+        
+        # Add cache statistics if using cache
+        if self.stat_cache:
+            stats['stat_cache'] = self.stat_cache.get_stats()
+        
         return stats
 
 
