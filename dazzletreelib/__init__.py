@@ -9,7 +9,7 @@ Synchronous:
     from dazzletreelib.sync import traverse_tree
     
 Asynchronous:
-    from dazzletreelib.asynch import traverse_tree_async
+    from dazzletreelib.aio import traverse_tree_async
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Both implementations share the same concepts but are optimized for their
@@ -20,11 +20,11 @@ __version__ = "0.5.0"  # Clean separation of sync/async
 
 # Re-export submodules for convenient access
 from . import sync
-from . import asynch
+from . import aio
 
 # Users must explicitly choose their implementation
 __all__ = [
     "__version__",
     "sync",
-    "asynch",
+    "aio",
 ]
