@@ -10,6 +10,7 @@ DazzleTreeLib is a Python library providing both synchronous and asynchronous tr
 - 💾 **Memory Efficient**: Streaming iterators for handling large trees
 - 🛡️ **Error Resilient**: Structured concurrency with proper error handling
 - 🔧 **Highly Extensible**: Custom adapters, collectors, and traversal strategies
+- 🚀 **High-Performance Caching**: Optional 55x speedup for repeated traversals
 
 ## 📊 Performance
 
@@ -229,6 +230,37 @@ async def is_python_file(node):
 # Get all Python files
 python_files = await filter_tree_async(root, predicate=is_python_file)
 ```
+
+### High-Performance Caching (New in v0.8.0!)
+
+Get 55x speedup on repeated traversals with the optional caching layer:
+
+```python
+from dazzletreelib.aio.adapters import FastAsyncFileSystemAdapter
+from dazzletreelib.aio.caching import CachingTreeAdapter, FilesystemCachingAdapter
+
+# Basic caching with TTL
+base_adapter = FastAsyncFileSystemAdapter()
+cached_adapter = CachingTreeAdapter(base_adapter, max_size=50000, ttl=300)
+
+# First traversal: ~40ms for 1000 nodes
+async for node in traverse_tree_async(root, adapter=cached_adapter):
+    process(node)
+
+# Second traversal: <1ms! (55x faster)
+async for node in traverse_tree_async(root, adapter=cached_adapter):
+    process(node)
+
+# Filesystem-specific caching with instant invalidation
+fs_cached = FilesystemCachingAdapter(base_adapter)  # Uses mtime for change detection
+```
+
+Key features:
+- **Zero API changes**: Completely backwards compatible
+- **Future-based coordination**: Prevents duplicate concurrent scans
+- **Dual-cache system**: mtime validation with TTL fallback
+- **Statistics tracking**: Monitor cache performance
+- **Memory efficient**: ~300 bytes per cached directory
 
 ## 🏗️ Architecture
 

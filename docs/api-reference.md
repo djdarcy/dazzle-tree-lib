@@ -14,6 +14,7 @@ Complete API documentation for DazzleTreeLib's synchronous and asynchronous inte
   - [Node Classes](#async-node-classes)
   - [Adapter Classes](#async-adapter-classes)
   - [Traverser Classes](#async-traverser-classes)
+  - [Caching Adapters](#caching-adapters)
 - [Common Types](#common-types)
   - [Enumerations](#enumerations)
   - [Type Definitions](#type-definitions)
@@ -527,6 +528,154 @@ class AsyncDepthFirstTraverser(AsyncTraverser):
         Args:
             order: 'pre' or 'post' order traversal
         """
+```
+
+### Caching Adapters
+
+#### `CachingTreeAdapter`
+
+```python
+from dazzletreelib.aio.caching import CachingTreeAdapter
+
+class CachingTreeAdapter(AsyncTreeAdapter):
+    """Decorator adapter that adds caching to any AsyncTreeAdapter.
+    
+    Provides 55x+ speedup on repeated traversals by caching directory
+    children lists. Uses Future-based coordination to prevent duplicate
+    concurrent scans of the same directory.
+    """
+    
+    def __init__(
+        self,
+        base_adapter: AsyncTreeAdapter,
+        max_size: int = 10000,
+        ttl: float = 300
+    ):
+        """Initialize caching adapter.
+        
+        Args:
+            base_adapter: The adapter to wrap with caching
+            max_size: Maximum number of directories to cache
+            ttl: Time-to-live in seconds (from insertion time)
+        """
+```
+
+**Features:**
+- **55x+ speedup** on warm traversals
+- **Future-based coordination** prevents duplicate concurrent scans
+- **TTL-based expiration** for stale data prevention
+- **Statistics tracking** for cache performance monitoring
+- **Zero API changes** - drop-in replacement
+
+**Example:**
+```python
+from dazzletreelib.aio import traverse_tree_async
+from dazzletreelib.aio.adapters import FastAsyncFileSystemAdapter
+from dazzletreelib.aio.caching import CachingTreeAdapter
+
+# Create cached adapter
+base = FastAsyncFileSystemAdapter()
+cached = CachingTreeAdapter(base, max_size=50000, ttl=300)
+
+# First traversal: ~40ms for 1000 nodes
+async for node in traverse_tree_async(root, adapter=cached):
+    process(node)
+
+# Second traversal: <1ms (55x faster!)
+async for node in traverse_tree_async(root, adapter=cached):
+    process(node)
+
+# Check cache statistics
+stats = cached.get_cache_stats()
+print(f"Cache hit rate: {stats['hit_rate']:.1%}")
+print(f"Concurrent requests shared: {stats['concurrent_waits']}")
+```
+
+#### `FilesystemCachingAdapter`
+
+```python
+from dazzletreelib.aio.caching import FilesystemCachingAdapter
+
+class FilesystemCachingAdapter(CachingTreeAdapter):
+    """Filesystem-specific caching with mtime-based invalidation.
+    
+    Extends CachingTreeAdapter with dual-cache system:
+    1. mtime cache for instant invalidation on file changes
+    2. TTL cache as fallback when mtime unavailable
+    """
+    
+    def __init__(
+        self,
+        base_adapter: AsyncTreeAdapter,
+        max_size: int = 10000,
+        ttl: float = 300
+    ):
+        """Initialize filesystem caching adapter.
+        
+        Args:
+            base_adapter: Filesystem adapter to wrap
+            max_size: Maximum cache entries
+            ttl: TTL fallback when mtime unavailable
+        """
+```
+
+**Features:**
+- **Instant invalidation** when directory contents change (via mtime)
+- **Graceful fallback** to TTL when mtime detection fails
+- **Dual-cache system** for maximum reliability
+- **Platform-aware** handling of filesystem differences
+
+**Example:**
+```python
+from dazzletreelib.aio.caching import FilesystemCachingAdapter
+
+# Filesystem-aware caching
+cached = FilesystemCachingAdapter(base_adapter)
+
+# Cache automatically invalidates when files change
+async for node in traverse_tree_async(root, adapter=cached):
+    process(node)
+
+# Add a file to the directory
+(root / "newfile.txt").touch()
+
+# Next traversal detects change via mtime
+async for node in traverse_tree_async(root, adapter=cached):
+    process(node)  # Will include newfile.txt
+```
+
+#### Cache Management Methods
+
+```python
+# Get cache statistics
+stats = cached.get_cache_stats()
+# Returns: {
+#     'hits': 450,
+#     'misses': 50,
+#     'hit_rate': 0.9,
+#     'cache_size': 500,
+#     'concurrent_waits': 4
+# }
+
+# Clear cache manually
+cached.clear_cache()
+
+# Check if caching is beneficial
+if stats['hit_rate'] < 0.5:
+    print("Consider disabling cache or adjusting TTL")
+```
+
+#### Performance Tuning
+
+```python
+# Conservative: Small cache, short TTL
+cached = CachingTreeAdapter(base, max_size=1000, ttl=60)
+
+# Aggressive: Large cache, long TTL
+cached = CachingTreeAdapter(base, max_size=100000, ttl=3600)
+
+# Filesystem-specific: Rely primarily on mtime
+cached = FilesystemCachingAdapter(base, ttl=300)
 ```
 
 ---

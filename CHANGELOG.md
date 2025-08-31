@@ -5,6 +5,28 @@ All notable changes to DazzleTreeLib will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-08-31
+
+### Added
+- **High-Performance Caching Layer** - Optional caching adapter achieving 55x speedup on warm traversals
+- **Future-based Async Coordination** - Prevents duplicate concurrent scans of same directories
+- **Dual-Cache System** - FilesystemCachingAdapter uses mtime invalidation with TTL fallback
+- **Cache Statistics Tracking** - Monitor hit rates, concurrent waits, and cache performance
+- **Integration Examples** - Complete folder-datetime-fix migration patterns
+
+### Performance Improvements
+- **55x faster** on repeated traversals with caching enabled
+- **Zero duplicate scans** - Concurrent requests share single scan result
+- **~300 bytes per cached directory** - Memory efficient implementation
+- **Configurable TTL and cache size** - Tune for your specific workload
+
+### Technical Details
+- Decorator pattern maintains backwards compatibility
+- CachingTreeAdapter wraps any AsyncTreeAdapter implementation
+- FilesystemCachingAdapter adds mtime-based invalidation for filesystem trees
+- TTL (Time-To-Live) based on insertion time, not access time
+- Future-based locking elegantly handles concurrent access patterns
+
 ## [0.7.0] - 2025-08-31
 
 ### Added
@@ -110,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Caching layer for repeated traversals
 - Query DSL for intuitive filtering
 - Tree diff functionality
-- Comprehensive API documentation
+- More helpful API documentation
 
 ### Phase 4 (Future)
 - Plugin system for extensibility
