@@ -173,7 +173,9 @@ class TestPerformanceBenchmarks:
             # Time sync traversal (no warmup for large tree)
             start = time.perf_counter()
             sync_count = 0
-            for _ in traverse_tree(root):
+            sync_adapter = SyncAdapter()
+            sync_root = SyncNode(root)
+            for _ in traverse_tree(sync_root, sync_adapter):
                 sync_count += 1
             sync_time = time.perf_counter() - start
             

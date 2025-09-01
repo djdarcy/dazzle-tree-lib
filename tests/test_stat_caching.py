@@ -35,10 +35,9 @@ async def test_stat_caching():
         print("Testing stat caching performance...")
         print("=" * 60)
         
-        # Test WITHOUT caching
-        print("\n1. WITHOUT stat caching:")
+        # Test WITHOUT caching (all adapters now use caching by default)
+        print("\n1. WITHOUT explicit caching adapter:")
         adapter_no_cache = AsyncFileSystemAdapter(
-            use_stat_cache=False,  # Disable caching
             batch_size=10
         )
         root_no_cache = AsyncFileSystemNode(test_dir)
@@ -63,14 +62,15 @@ async def test_stat_caching():
         print(f"  Time: {time_no_cache:.3f}s")
         print(f"  Total size: {total_size:,} bytes")
         
-        # Test WITH caching
-        print("\n2. WITH stat caching:")
-        adapter_with_cache = AsyncFileSystemAdapter(
-            use_stat_cache=True,  # Enable caching
-            cache_ttl=1.0,  # 1 second TTL
-            batch_size=10
+        # Test WITH caching adapter wrapper
+        print("\n2. WITH caching adapter:")
+        from dazzletreelib.aio.caching import CachingTreeAdapter
+        base_adapter = AsyncFileSystemAdapter(batch_size=10)
+        adapter_with_cache = CachingTreeAdapter(
+            base_adapter,
+            ttl=1.0  # 1 second TTL
         )
-        root_with_cache = AsyncFileSystemNode(test_dir, adapter_with_cache.stat_cache)
+        root_with_cache = AsyncFileSystemNode(test_dir)
         
         start = time.perf_counter()
         count = 0
@@ -91,13 +91,14 @@ async def test_stat_caching():
         print(f"  Total size: {total_size:,} bytes")
         
         # Print cache statistics
-        if adapter_with_cache.stat_cache:
-            cache_stats = adapter_with_cache.stat_cache.get_stats()
+        cache_stats = await adapter_with_cache.get_stats()
+        if 'cache_hits' in cache_stats:
             print(f"\n  Cache Statistics:")
-            print(f"    Hits: {cache_stats['hits']}")
-            print(f"    Misses: {cache_stats['misses']}")
-            print(f"    Hit rate: {cache_stats['hit_rate']:.1%}")
-            print(f"    Cached paths: {cache_stats['cached_paths']}")
+            print(f"    Hits: {cache_stats['cache_hits']}")
+            print(f"    Misses: {cache_stats['cache_misses']}")
+            hit_rate = cache_stats['cache_hits'] / max(1, cache_stats['cache_hits'] + cache_stats['cache_misses'])
+            print(f"    Hit rate: {hit_rate:.1%}")
+            print(f"    Cached items: {cache_stats['cached_items']}")
         
         # Calculate improvement
         if time_no_cache > 0:
@@ -127,25 +128,27 @@ async def test_cache_sharing():
         print("Testing cache sharing between nodes...")
         print("=" * 60)
         
-        # Create adapter with cache
-        adapter = AsyncFileSystemAdapter(use_stat_cache=True)
+        # Create adapter with cache wrapper
+        from dazzletreelib.aio.caching import CachingTreeAdapter
+        base_adapter = AsyncFileSystemAdapter()
+        adapter = CachingTreeAdapter(base_adapter)
         
         # Create multiple nodes pointing to same files
-        node1a = AsyncFileSystemNode(file1, adapter.stat_cache)
-        node1b = AsyncFileSystemNode(file1, adapter.stat_cache)  # Same file
-        node2 = AsyncFileSystemNode(file2, adapter.stat_cache)
+        node1a = AsyncFileSystemNode(file1)
+        node1b = AsyncFileSystemNode(file1)  # Same file
+        node2 = AsyncFileSystemNode(file2)
         
         # Access stat through first node (populates cache)
         size1a = await node1a.size()
         print(f"\nFirst access to file1: {size1a} bytes")
         
         # Access through second node (should hit cache)
-        cache_stats_before = adapter.stat_cache.get_stats()
+        cache_stats_before = await adapter.get_stats()
         size1b = await node1b.size()
-        cache_stats_after = adapter.stat_cache.get_stats()
+        cache_stats_after = await adapter.get_stats()
         
         print(f"Second access to file1: {size1b} bytes")
-        print(f"Cache hits increased: {cache_stats_after['hits'] > cache_stats_before['hits']}")
+        print(f"Cache hits increased: {cache_stats_after.get('cache_hits', 0) > cache_stats_before.get('cache_hits', 0)}")
         
         # Verify sizes match
         assert size1a == size1b, "Sizes should match"
@@ -154,12 +157,15 @@ async def test_cache_sharing():
         size2 = await node2.size()
         print(f"Access to file2: {size2} bytes")
         
-        final_stats = adapter.stat_cache.get_stats()
+        final_stats = await adapter.get_stats()
         print(f"\nFinal cache statistics:")
-        print(f"  Total operations: {final_stats['hits'] + final_stats['misses']}")
-        print(f"  Cache hit rate: {final_stats['hit_rate']:.1%}")
+        hits = final_stats.get('cache_hits', 0)
+        misses = final_stats.get('cache_misses', 0)
+        print(f"  Total operations: {hits + misses}")
+        if hits + misses > 0:
+            print(f"  Cache hit rate: {hits / (hits + misses):.1%}")
         
-        return final_stats['hits'] > 0  # Should have cache hits
+        return hits > 0  # Should have cache hits
 
 
 async def test_simple_traversal():
@@ -183,7 +189,7 @@ async def test_simple_traversal():
         # Time traversal without cache
         start = time.perf_counter()
         files_no_cache = []
-        async for node in traverse_tree_async(test_dir, use_stat_cache=False):
+        async for node in traverse_tree_async(test_dir):
             if node.path.is_file():
                 size = await node.size()
                 files_no_cache.append((node.path.name, size))
@@ -192,7 +198,14 @@ async def test_simple_traversal():
         # Time traversal with cache
         start = time.perf_counter()
         files_with_cache = []
-        async for node in traverse_tree_async(test_dir, use_stat_cache=True):
+        # Use caching adapter for second traversal
+        from dazzletreelib.aio.caching import CachingTreeAdapter
+        base = AsyncFileSystemAdapter()
+        caching_adapter = CachingTreeAdapter(base)
+        root_node = AsyncFileSystemNode(test_dir)
+        from dazzletreelib.aio.core import AsyncBreadthFirstTraverser
+        traverser = AsyncBreadthFirstTraverser()
+        async for node in traverser.traverse(root_node, caching_adapter):
             if node.path.is_file():
                 size = await node.size()
                 files_with_cache.append((node.path.name, size))

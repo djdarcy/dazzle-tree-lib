@@ -18,7 +18,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dazzletreelib.aio import traverse_tree_async
-from dazzletreelib.aio.adapters.fast_filesystem import fast_traverse_tree
+
 
 
 async def benchmark_adapters():
@@ -74,7 +74,7 @@ async def benchmark_adapters():
         count = 0
         total_size = 0
         
-        async for node in fast_traverse_tree(test_dir):
+        async for node in traverse_tree_async(test_dir):
             count += 1
             if not node.is_leaf():
                 continue
@@ -166,7 +166,7 @@ async def test_correctness():
         
         # Collect with fast
         fast_files = []
-        async for node in fast_traverse_tree(test_dir):
+        async for node in traverse_tree_async(test_dir):
             if not node.is_leaf():
                 continue
             if await node.size() is not None:

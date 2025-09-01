@@ -24,6 +24,7 @@ class AsyncTreeAdapter(ABC):
         Args:
             max_concurrent: Maximum concurrent I/O operations
         """
+        self.max_concurrent = max_concurrent
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self._capabilities = self._define_capabilities()
     
@@ -116,8 +117,8 @@ class AsyncTreeAdapter(ABC):
             Dictionary of statistics (I/O count, cache hits, etc.)
         """
         return {
-            'max_concurrent': self.semaphore._initial_value,
-            'available_permits': self.semaphore._value,
+            'max_concurrent': self.max_concurrent,
+            'available_permits': self.semaphore._value if hasattr(self.semaphore, '_value') else None,
         }
     
     async def close(self):

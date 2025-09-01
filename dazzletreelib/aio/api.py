@@ -23,10 +23,6 @@ from .adapters import (
     AsyncFileSystemAdapter,
     AsyncFilteredFileSystemAdapter,
 )
-from .adapters.fast_filesystem import (
-    FastAsyncFileSystemAdapter,
-    FastAsyncFileSystemNode,
-)
 
 
 async def traverse_tree_async(
@@ -34,9 +30,7 @@ async def traverse_tree_async(
     strategy: str = 'bfs',
     max_depth: Optional[int] = None,
     max_concurrent: int = 100,
-    batch_size: int = 256,
-    use_stat_cache: bool = True,
-    use_fast_adapter: bool = True
+    batch_size: int = 256
 ) -> AsyncIterator[AsyncFileSystemNode]:
     """Traverse a filesystem tree asynchronously.
     
@@ -46,23 +40,16 @@ async def traverse_tree_async(
         max_depth: Maximum depth to traverse
         max_concurrent: Maximum concurrent I/O operations
         batch_size: Number of children to process in parallel
-        use_stat_cache: Use stat caching for better performance
-        use_fast_adapter: Use fast scandir-based adapter (default: True)
         
     Yields:
         AsyncFileSystemNode objects in traversal order
     """
-    # Use fast adapter by default for better performance
-    if use_fast_adapter:
-        adapter = FastAsyncFileSystemAdapter()
-        root_node = FastAsyncFileSystemNode(root)
-    else:
-        adapter = AsyncFileSystemAdapter(
-            max_concurrent=max_concurrent,
-            batch_size=batch_size,
-            use_stat_cache=use_stat_cache
-        )
-        root_node = AsyncFileSystemNode(root, adapter.stat_cache)
+    # Always use the optimized scandir-based implementation
+    adapter = AsyncFileSystemAdapter(
+        max_concurrent=max_concurrent,
+        batch_size=batch_size
+    )
+    root_node = AsyncFileSystemNode(root)
     
     if strategy == 'bfs':
         traverser = AsyncBreadthFirstTraverser()
@@ -165,8 +152,11 @@ async def find_files_async(
         List of matching file paths
     """
     root_node = AsyncFileSystemNode(root)
+    # Create base adapter with configuration
+    base_adapter = AsyncFileSystemAdapter(max_concurrent=max_concurrent)
+    # Wrap with filtering
     adapter = AsyncFilteredFileSystemAdapter(
-        max_concurrent=max_concurrent,
+        base_adapter=base_adapter,
         include_patterns=[pattern]
     )
     traverser = AsyncBreadthFirstTraverser()
@@ -197,8 +187,11 @@ async def find_directories_async(
         List of matching directory paths
     """
     root_node = AsyncFileSystemNode(root)
+    # Create base adapter with configuration
+    base_adapter = AsyncFileSystemAdapter(max_concurrent=max_concurrent)
+    # Wrap with filtering for directories
     adapter = AsyncFilteredFileSystemAdapter(
-        max_concurrent=max_concurrent,
+        base_adapter=base_adapter,
         include_patterns=[pattern]
     )
     traverser = AsyncBreadthFirstTraverser()

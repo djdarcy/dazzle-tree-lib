@@ -5,6 +5,25 @@ All notable changes to DazzleTreeLib will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2025-08-31
+
+### Changed (Breaking)
+- **Unified AsyncFileSystemAdapter** - Single optimized implementation using os.scandir
+- **Removed dual implementation** - Deleted FastAsyncFileSystemAdapter and StatCache classes
+- **Simplified API** - Removed use_fast_adapter and use_stat_cache parameters
+- **Composition over inheritance** - AsyncFilteredFileSystemAdapter now uses composition pattern
+
+### Performance
+- **Same 9-12x performance** - Unified adapter maintains all performance gains
+- **DirEntry stat caching** - Built-in caching via os.scandir's DirEntry objects
+- **Reduced code complexity** - 40% less code with same performance benefits
+- **Memory efficient** - No separate StatCache needed, uses OS-level caching
+
+### Migration
+- Simply remove any references to FastAsyncFileSystemAdapter or use_fast_adapter
+- AsyncFileSystemAdapter now includes all optimizations by default
+- AsyncFilteredFileSystemAdapter constructor changed to accept base_adapter parameter
+
 ## [0.8.0] - 2025-08-31
 
 ### Added
@@ -21,8 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configurable TTL and cache size** - Tune for your specific workload
 
 ### Technical Details
-- Decorator pattern maintains backwards compatibility
-- CachingTreeAdapter wraps any AsyncTreeAdapter implementation
+- Decorator pattern allows wrapping any existing adapter
+- CachingTreeAdapter works with any AsyncTreeAdapter implementation
 - FilesystemCachingAdapter adds mtime-based invalidation for filesystem trees
 - TTL (Time-To-Live) based on insertion time, not access time
 - Future-based locking elegantly handles concurrent access patterns

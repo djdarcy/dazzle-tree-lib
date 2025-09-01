@@ -15,7 +15,7 @@ from pathlib import Path
 import shutil
 
 from dazzletreelib.aio.caching import CachingTreeAdapter, FilesystemCachingAdapter
-from dazzletreelib.aio.adapters.fast_filesystem import FastAsyncFileSystemAdapter, FastAsyncFileSystemNode
+from dazzletreelib.aio.adapters.filesystem import AsyncFileSystemAdapter, AsyncFileSystemNode
 from dazzletreelib.aio.api import traverse_tree_async
 
 
@@ -66,7 +66,7 @@ async def traverse_with_adapter(root: Path, adapter) -> tuple[int, float]:
     start = time.perf_counter()
     node_count = 0
     
-    root_node = FastAsyncFileSystemNode(root)
+    root_node = AsyncFileSystemNode(root)
     async for child in adapter.get_children(root_node):
         node_count += 1
         # Traverse subdirectories
@@ -102,7 +102,7 @@ async def benchmark_caching():
         print(f"   Created {total_nodes} nodes")
         
         # Create adapters
-        base_adapter = FastAsyncFileSystemAdapter()
+        base_adapter = AsyncFileSystemAdapter()
         cached_adapter = CachingTreeAdapter(base_adapter, max_size=50000, ttl=300)
         filesystem_cached = FilesystemCachingAdapter(base_adapter, max_size=50000)
         
@@ -190,7 +190,7 @@ async def benchmark_large_tree():
         total_nodes = await create_test_structure(test_root, depth=5, width=10)
         print(f"Created {total_nodes} nodes")
         
-        base_adapter = FastAsyncFileSystemAdapter()
+        base_adapter = AsyncFileSystemAdapter()
         cached_adapter = CachingTreeAdapter(base_adapter, max_size=100000, ttl=300)
         
         # Cold scan

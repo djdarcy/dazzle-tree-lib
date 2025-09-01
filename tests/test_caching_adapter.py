@@ -17,7 +17,7 @@ from typing import List, Set, Optional
 import pytest
 
 from dazzletreelib.aio.caching import CachingTreeAdapter, FilesystemCachingAdapter
-from dazzletreelib.aio.adapters.fast_filesystem import FastAsyncFileSystemAdapter, FastAsyncFileSystemNode
+from dazzletreelib.aio.adapters import AsyncFileSystemAdapter, AsyncFileSystemNode
 from dazzletreelib.aio.core import AsyncTreeNode
 
 
@@ -41,12 +41,12 @@ class MockSlowAdapter:
         # Yield mock children
         if hasattr(node, 'path'):
             for i in range(3):
-                yield FastAsyncFileSystemNode(node.path / f"child_{i}")
+                yield AsyncFileSystemNode(node.path / f"child_{i}")
     
     async def get_parent(self, node: AsyncTreeNode) -> Optional[AsyncTreeNode]:
         """Mock parent retrieval."""
         if hasattr(node, 'path') and node.path.parent != node.path:
-            return FastAsyncFileSystemNode(node.path.parent)
+            return AsyncFileSystemNode(node.path.parent)
         return None
     
     async def get_depth(self, node: AsyncTreeNode) -> int:
@@ -70,7 +70,7 @@ async def test_concurrent_access_prevention():
     mock_adapter = MockSlowAdapter(delay=0.1)
     cached_adapter = CachingTreeAdapter(mock_adapter)
     
-    test_node = FastAsyncFileSystemNode(Path("/test"))
+    test_node = AsyncFileSystemNode(Path("/test"))
     
     # Start 5 concurrent tasks requesting the same path
     tasks = [
@@ -101,7 +101,7 @@ async def test_cache_hit_performance():
     mock_adapter = MockSlowAdapter(delay=0.05)
     cached_adapter = CachingTreeAdapter(mock_adapter, ttl=10.0)
     
-    test_node = FastAsyncFileSystemNode(Path("/test"))
+    test_node = AsyncFileSystemNode(Path("/test"))
     
     # First call - cache miss
     start = time.perf_counter()
@@ -133,7 +133,7 @@ async def test_different_paths_independent():
     cached_adapter = CachingTreeAdapter(mock_adapter)
     
     paths = [Path(f"/test{i}") for i in range(5)]
-    nodes = [FastAsyncFileSystemNode(p) for p in paths]
+    nodes = [AsyncFileSystemNode(p) for p in paths]
     
     # Request all different paths
     results = []
@@ -156,8 +156,8 @@ async def test_mixed_concurrent_patterns():
     cached_adapter = CachingTreeAdapter(mock_adapter)
     
     # Create test nodes
-    node_a = FastAsyncFileSystemNode(Path("/a"))
-    node_b = FastAsyncFileSystemNode(Path("/b"))
+    node_a = AsyncFileSystemNode(Path("/a"))
+    node_b = AsyncFileSystemNode(Path("/b"))
     
     # Pattern: A1, A2, B1 start concurrently
     # Then A3 starts after A1/A2 complete
@@ -209,10 +209,10 @@ async def test_filesystem_mtime_invalidation():
         (test_dir / "file2.txt").touch()
         
         # Create adapters
-        base_adapter = FastAsyncFileSystemAdapter()
+        base_adapter = AsyncFileSystemAdapter()
         cached_adapter = FilesystemCachingAdapter(base_adapter)
         
-        test_node = FastAsyncFileSystemNode(test_dir)
+        test_node = AsyncFileSystemNode(test_dir)
         
         # First scan
         children1 = await collect_children(cached_adapter, test_node)
@@ -249,7 +249,7 @@ async def test_cache_statistics():
     cached_adapter = CachingTreeAdapter(mock_adapter, max_size=10, ttl=5.0)
     
     # Perform various operations
-    nodes = [FastAsyncFileSystemNode(Path(f"/test{i}")) for i in range(5)]
+    nodes = [AsyncFileSystemNode(Path(f"/test{i}")) for i in range(5)]
     
     # First pass - all misses
     for node in nodes:
@@ -276,7 +276,7 @@ async def test_cache_clear():
     mock_adapter = MockSlowAdapter(delay=0.01)
     cached_adapter = CachingTreeAdapter(mock_adapter)
     
-    test_node = FastAsyncFileSystemNode(Path("/test"))
+    test_node = AsyncFileSystemNode(Path("/test"))
     
     # Populate cache
     await collect_children(cached_adapter, test_node)
@@ -321,7 +321,7 @@ async def test_exception_handling_in_concurrent_access():
     failing_adapter = FailingAdapter()
     cached_adapter = CachingTreeAdapter(failing_adapter)
     
-    test_node = FastAsyncFileSystemNode(Path("/test"))
+    test_node = AsyncFileSystemNode(Path("/test"))
     
     # Start concurrent tasks
     tasks = [
@@ -349,7 +349,7 @@ async def test_stress_test_many_concurrent_paths():
     
     # Create 100 different paths
     paths = [Path(f"/test/{i // 10}/{i}") for i in range(100)]
-    nodes = [FastAsyncFileSystemNode(p) for p in paths]
+    nodes = [AsyncFileSystemNode(p) for p in paths]
     
     # Access all paths concurrently
     tasks = [
@@ -376,7 +376,7 @@ async def test_ttl_expiration():
     mock_adapter = MockSlowAdapter(delay=0.01)
     cached_adapter = CachingTreeAdapter(mock_adapter, ttl=0.1)  # 100ms TTL
     
-    test_node = FastAsyncFileSystemNode(Path("/test"))
+    test_node = AsyncFileSystemNode(Path("/test"))
     
     # First access - cache miss
     await collect_children(cached_adapter, test_node)

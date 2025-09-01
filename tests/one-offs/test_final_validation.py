@@ -6,33 +6,32 @@ from pathlib import Path
 from dazzletreelib.aio import traverse_tree_async
 
 
-async def test_default_fast_adapter():
-    """Test that the fast adapter works as default."""
+async def test_unified_adapter():
+    """Test that the unified scandir-based adapter works correctly."""
     test_dir = Path("C:/code/DazzleTreeLib")
     
-    # Test with default (fast adapter)
-    count_fast = 0
+    # Test with unified adapter (now the only implementation)
+    count = 0
+    nodes_seen = set()
     async for node in traverse_tree_async(test_dir, max_depth=2):
-        count_fast += 1
+        count += 1
+        nodes_seen.add(str(node.path))
     
-    print(f"[PASS] Fast adapter (default): Traversed {count_fast} nodes")
+    print(f"[PASS] Unified adapter: Traversed {count} nodes")
     
-    # Test with explicit old adapter
-    count_old = 0
-    async for node in traverse_tree_async(test_dir, max_depth=2, use_fast_adapter=False):
-        count_old += 1
+    # Verify we got reasonable results
+    assert count > 0, "Should have found at least some nodes"
+    assert str(test_dir / "README.md") in nodes_seen, "Should have found README.md"
+    assert str(test_dir / "pyproject.toml") in nodes_seen, "Should have found pyproject.toml"
     
-    print(f"[PASS] Old adapter (explicit): Traversed {count_old} nodes")
-    
-    # Should find same number of nodes
-    assert count_fast == count_old, f"Node count mismatch: {count_fast} != {count_old}"
-    print(f"[PASS] Both adapters found same nodes: {count_fast}")
+    print(f"[PASS] Found expected files in traversal")
+    print(f"[INFO] Unified implementation using os.scandir for 9-12x performance")
     
     return True
 
 
 if __name__ == "__main__":
-    success = asyncio.run(test_default_fast_adapter())
+    success = asyncio.run(test_unified_adapter())
     if success:
         print("\n[SUCCESS] Final validation passed - ready to commit!")
     else:

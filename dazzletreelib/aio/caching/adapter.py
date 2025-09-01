@@ -22,7 +22,7 @@ class CachingTreeAdapter(AsyncTreeAdapter):
     locking to prevent duplicate concurrent scans of the same path.
     
     Example:
-        base_adapter = FastAsyncFileSystemAdapter()
+        base_adapter = AsyncFileSystemAdapter()
         cached_adapter = CachingTreeAdapter(base_adapter, max_size=50000)
         
         async for node in traverse_tree_async(path, adapter=cached_adapter):
