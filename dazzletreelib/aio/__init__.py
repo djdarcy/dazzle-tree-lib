@@ -21,6 +21,18 @@ from .adapters import (
     AsyncFileSystemNode,
     AsyncFileSystemAdapter,
     AsyncFilteredFileSystemAdapter,
+    TimestampCalculationAdapter,
+    CompletenessAwareCacheAdapter,
+    CacheCompleteness,
+    DepthTrackingAdapter,
+)
+
+# Post-order traversal
+from .traversal.post_order import (
+    traverse_post_order_with_depth,
+    traverse_tree_bottom_up,
+    collect_by_level_bottom_up,
+    process_folders_bottom_up,
 )
 
 # Planning and orchestration
@@ -61,6 +73,10 @@ __all__ = [
     # Adapters
     'AsyncFileSystemAdapter',
     'AsyncFilteredFileSystemAdapter',
+    'TimestampCalculationAdapter',
+    'CompletenessAwareCacheAdapter',
+    'CacheCompleteness',
+    'DepthTrackingAdapter',
     # Traversers
     'AsyncBreadthFirstTraverser',
     'AsyncDepthFirstTraverser',
@@ -89,4 +105,9 @@ __all__ = [
     'filter_tree_async',
     'count_nodes_async',
     'get_leaf_nodes_async',
+    # Post-order traversal
+    'traverse_post_order_with_depth',
+    'traverse_tree_bottom_up',
+    'collect_by_level_bottom_up',
+    'process_folders_bottom_up',
 ]

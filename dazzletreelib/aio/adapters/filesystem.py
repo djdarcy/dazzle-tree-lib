@@ -292,6 +292,17 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
         
         return depth
     
+    def is_leaf(self, node: AsyncFileSystemNode) -> bool:
+        """Check if node is a leaf (file or empty directory).
+        
+        Args:
+            node: Node to check
+            
+        Returns:
+            True if node is a leaf
+        """
+        return node.is_leaf()
+    
     def _find_root_path(self, node: AsyncFileSystemNode) -> Path:
         """Find the root path for depth calculation.
         

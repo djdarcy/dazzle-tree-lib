@@ -9,9 +9,19 @@ from .filesystem import (
     AsyncFileSystemAdapter,
     AsyncFilteredFileSystemAdapter,
 )
+from .timestamp_adapter import TimestampCalculationAdapter
+from .cache_completeness_adapter import (
+    CacheCompleteness,
+    CompletenessAwareCacheAdapter,
+)
+from .depth_tracking_adapter import DepthTrackingAdapter
 
 __all__ = [
     'AsyncFileSystemNode',
     'AsyncFileSystemAdapter',
     'AsyncFilteredFileSystemAdapter',
+    'TimestampCalculationAdapter',
+    'CacheCompleteness',
+    'CompletenessAwareCacheAdapter',
+    'DepthTrackingAdapter',
 ]
