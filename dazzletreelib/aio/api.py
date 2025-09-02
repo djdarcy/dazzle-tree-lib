@@ -6,7 +6,7 @@ tree traversal operations. All functions use the new structured modules.
 
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Any, Optional, AsyncIterator, Set
+from typing import List, Dict, Any, Optional, AsyncIterator, Set, Tuple
 
 from .core import (
     AsyncBreadthFirstTraverser,
@@ -17,6 +17,12 @@ from .core import (
 from .core.collector import (
     AsyncSizeCollector,
     AsyncFilterCollector,
+)
+from .core.depth_traverser import (
+    AsyncBreadthFirstDepthTraverser,
+    AsyncDepthFirstDepthTraverser,
+    AsyncLevelOrderDepthTraverser,
+    create_depth_traverser,
 )
 from .adapters import (
     AsyncFileSystemNode,
@@ -62,6 +68,137 @@ async def traverse_tree_async(
     
     async for node in traverser.traverse(root_node, adapter, max_depth):
         yield node
+
+
+async def traverse_with_depth(
+    root: Path,
+    strategy: str = 'bfs',
+    start_depth: int = 0,
+    max_depth: Optional[int] = None,
+    max_concurrent: int = 100,
+    batch_size: int = 256,
+    adapter: Optional[Any] = None
+) -> AsyncIterator[Tuple[AsyncFileSystemNode, int]]:
+    """Traverse a filesystem tree with depth information.
+    
+    This function yields (node, depth) tuples, providing O(1) access
+    to depth information during traversal. This is useful for depth-based
+    filtering, processing rules, or visualization.
+    
+    Args:
+        root: Root directory to traverse
+        strategy: Traversal strategy ('bfs', 'dfs', 'dfs_post', 'level')
+        start_depth: Starting depth value (default 0)
+        max_depth: Maximum depth to traverse (inclusive)
+        max_concurrent: Maximum concurrent I/O operations
+        batch_size: Number of children to process in parallel
+        adapter: Optional custom adapter (creates FileSystemAdapter if None)
+        
+    Yields:
+        Tuples of (AsyncFileSystemNode, depth) in traversal order
+        
+    Example:
+        >>> async for node, depth in traverse_with_depth('/path', max_depth=3):
+        ...     print(f"{'  ' * depth}{node.path.name}")
+    """
+    # Use provided adapter or create default
+    if adapter is None:
+        adapter = AsyncFileSystemAdapter(
+            max_concurrent=max_concurrent,
+            batch_size=batch_size
+        )
+    
+    root_node = AsyncFileSystemNode(root)
+    
+    # Create appropriate depth-tracking traverser
+    traverser = create_depth_traverser(strategy)
+    
+    # Yield (node, depth) tuples
+    async for node, depth in traverser.traverse_with_depth(
+        root_node, adapter, start_depth, max_depth
+    ):
+        yield node, depth
+
+
+async def traverse_tree_by_level(
+    root: Path,
+    max_depth: Optional[int] = None,
+    max_concurrent: int = 100,
+    batch_size: int = 256
+) -> AsyncIterator[Tuple[int, List[AsyncFileSystemNode]]]:
+    """Traverse tree yielding all nodes at each depth level as batches.
+    
+    This is useful for level-based processing where you need all nodes
+    at a given depth before proceeding to the next level.
+    
+    Args:
+        root: Root directory to traverse
+        max_depth: Maximum depth to traverse
+        max_concurrent: Maximum concurrent I/O operations
+        batch_size: Number of children to process in parallel
+        
+    Yields:
+        Tuples of (depth, list_of_nodes_at_that_depth)
+        
+    Example:
+        >>> async for depth, nodes in traverse_tree_by_level('/path'):
+        ...     print(f"Level {depth}: {len(nodes)} nodes")
+    """
+    adapter = AsyncFileSystemAdapter(
+        max_concurrent=max_concurrent,
+        batch_size=batch_size
+    )
+    root_node = AsyncFileSystemNode(root)
+    
+    traverser = AsyncLevelOrderDepthTraverser()
+    
+    async for depth, nodes in traverser.traverse_by_level(
+        root_node, adapter, 0, max_depth
+    ):
+        yield depth, nodes
+
+
+async def filter_by_depth(
+    root: Path,
+    min_depth: Optional[int] = None,
+    max_depth: Optional[int] = None,
+    exact_depth: Optional[int] = None,
+    max_concurrent: int = 100
+) -> List[Path]:
+    """Get all nodes at specific depth(s) in the tree.
+    
+    Args:
+        root: Root directory to traverse
+        min_depth: Minimum depth (inclusive)
+        max_depth: Maximum depth (inclusive)
+        exact_depth: Exact depth to match (overrides min/max)
+        max_concurrent: Maximum concurrent I/O operations
+        
+    Returns:
+        List of paths matching the depth criteria
+        
+    Example:
+        >>> # Get all files/dirs exactly 3 levels deep
+        >>> paths = await filter_by_depth('/path', exact_depth=3)
+        
+        >>> # Get all files/dirs between depth 2 and 4
+        >>> paths = await filter_by_depth('/path', min_depth=2, max_depth=4)
+    """
+    matching_paths = []
+    
+    async for node, depth in traverse_with_depth(
+        root, max_depth=max_depth, max_concurrent=max_concurrent
+    ):
+        # Check depth criteria
+        if exact_depth is not None:
+            if depth == exact_depth:
+                matching_paths.append(node.path)
+        else:
+            if (min_depth is None or depth >= min_depth) and \
+               (max_depth is None or depth <= max_depth):
+                matching_paths.append(node.path)
+    
+    return matching_paths
 
 
 async def collect_metadata_async(

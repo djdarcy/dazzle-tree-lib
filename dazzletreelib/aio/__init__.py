@@ -29,6 +29,9 @@ from .planning import AsyncExecutionPlan
 # High-level API
 from .api import (
     traverse_tree_async,
+    traverse_with_depth,
+    traverse_tree_by_level,
+    filter_by_depth,
     collect_metadata_async,
     get_tree_paths_async,
     calculate_size_async,
@@ -73,6 +76,9 @@ __all__ = [
     'DataRequirement',
     # High-level API
     'traverse_tree_async',
+    'traverse_with_depth',
+    'traverse_tree_by_level',
+    'filter_by_depth',
     'collect_metadata_async',
     'get_tree_paths_async',
     'calculate_size_async',
