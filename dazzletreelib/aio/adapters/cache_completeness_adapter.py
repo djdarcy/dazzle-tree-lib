@@ -125,10 +125,47 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
             'upgrades': 0,
             'evictions': 0
         }
+        self._depth_context = None  # Optional depth context for caching
+    
+    def set_depth_context(self, depth: Optional[int]):
+        """
+        Optionally set depth context for caching operations.
+        
+        Args:
+            depth: The depth level for cache completeness tracking
+            
+        Returns:
+            self for method chaining
+        """
+        self._depth_context = depth
+        return self
     
     async def get_children(self, node: Any):
-        """Get children with caching."""
-        async for child in self.base_adapter.get_children(node):
+        """Get children with completeness-aware caching."""
+        # Define function to compute children if not cached
+        async def compute_children():
+            children = []
+            async for child in self.base_adapter.get_children(node):
+                children.append(child)
+            return children
+        
+        # Determine cache key and depth
+        path = node.path if hasattr(node, 'path') else str(node)
+        if not isinstance(path, Path):
+            path = Path(path) if isinstance(path, str) else path
+        
+        # Use depth context if set, otherwise default to SHALLOW (depth=1)
+        depth = self._depth_context if self._depth_context is not None else 1
+        
+        # Use existing cache infrastructure
+        children_list, was_cached = await self.get_or_compute(
+            path,
+            compute_children,
+            depth
+        )
+        
+        # Yield children from cache
+        for child in children_list:
             yield child
     
     async def get_parent(self, node: Any) -> Optional[Any]:
