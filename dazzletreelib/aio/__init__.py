@@ -27,6 +27,20 @@ from .adapters import (
     DepthTrackingAdapter,
 )
 
+# Error handling extensions
+from .error_policies import (
+    ErrorPolicy,
+    FailFastPolicy,
+    ContinueOnErrorsPolicy,
+    RetryPolicy,
+    CollectErrorsPolicy,
+    ThresholdPolicy,
+)
+from .error_handling import (
+    ErrorHandlingAdapter,
+    create_resilient_adapter,
+)
+
 # Post-order traversal
 from .traversal.post_order import (
     traverse_post_order_with_depth,
@@ -77,6 +91,15 @@ __all__ = [
     'CompletenessAwareCacheAdapter',
     'CacheCompleteness',
     'DepthTrackingAdapter',
+    # Error handling
+    'ErrorPolicy',
+    'FailFastPolicy',
+    'ContinueOnErrorsPolicy',
+    'RetryPolicy',
+    'CollectErrorsPolicy',
+    'ThresholdPolicy',
+    'ErrorHandlingAdapter',
+    'create_resilient_adapter',
     # Traversers
     'AsyncBreadthFirstTraverser',
     'AsyncDepthFirstTraverser',

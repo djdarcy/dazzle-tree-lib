@@ -16,7 +16,7 @@ Both implementations share the same concepts but are optimized for their
 respective execution models. Pick the one that fits your application.
 """
 
-__version__ = "0.7.0"  # Performance optimizations with scandir and caching
+__version__ = "0.9.2"  # Added PolicyDrivenErrorAdapter for error handling
 
 # Re-export submodules for convenient access
 from . import sync
