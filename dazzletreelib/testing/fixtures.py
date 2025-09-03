@@ -157,3 +157,75 @@ class TestableCache:
             True if path is cached and can be reused
         """
         return self.was_path_cached(path) and self.get_completeness(path) != CacheCompleteness.NONE
+    
+    def was_node_visited(self, path: Path) -> bool:
+        """Check if a node was visited during traversal (node tracking).
+        
+        This is different from was_path_cached() - it checks the node completeness
+        tracker which records ALL visited nodes, not just those whose children
+        were fetched.
+        
+        Args:
+            path: Path to check for visitation
+            
+        Returns:
+            True if node was visited during any traversal
+        """
+        if not hasattr(self._adapter, 'node_completeness'):
+            # Fallback to cache check if no node tracking
+            return self.was_path_cached(path)
+        
+        path_str = str(path)
+        return path_str in self._adapter.node_completeness
+    
+    def get_node_depth(self, path: Path) -> Optional[int]:
+        """Get the depth to which a node was scanned.
+        
+        This uses the node completeness tracker to determine how deep
+        a specific node was scanned during traversal.
+        
+        Args:
+            path: Path to check
+            
+        Returns:
+            Depth to which node was scanned, or None if not visited
+        """
+        if not hasattr(self._adapter, 'node_completeness'):
+            # Fallback to completeness-based depth if no node tracking
+            completeness = self.get_completeness(path)
+            if completeness is None:
+                return None
+            # Map completeness back to depth
+            if completeness == CacheCompleteness.SHALLOW:
+                return 1
+            elif completeness == CacheCompleteness.PARTIAL_2:
+                return 2
+            elif completeness == CacheCompleteness.PARTIAL_3:
+                return 3
+            elif completeness == CacheCompleteness.PARTIAL_4:
+                return 4
+            elif completeness == CacheCompleteness.PARTIAL_5:
+                return 5
+            elif completeness == CacheCompleteness.COMPLETE:
+                return 999
+            return 0
+        
+        path_str = str(path)
+        return self._adapter.node_completeness.get(path_str)
+    
+    def has_node_depth(self, path: Path, expected_depth: int) -> bool:
+        """Check if a node was scanned to at least the expected depth.
+        
+        This is the node-tracking equivalent of has_partial_depth().
+        
+        Args:
+            path: Path to check
+            expected_depth: Minimum depth expected
+            
+        Returns:
+            True if node was scanned to at least expected_depth
+        """
+        actual_depth = self.get_node_depth(path)
+        if actual_depth is None:
+            return False
+        return actual_depth >= expected_depth

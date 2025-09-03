@@ -23,17 +23,20 @@ class TimestampCalculationAdapter(AsyncTreeAdapter):
     - Smart: Adaptive based on folder age
     """
     
-    def __init__(self, base_adapter: AsyncTreeAdapter, strategy: str = 'shallow'):
+    def __init__(self, base_adapter: AsyncTreeAdapter, strategy: str = 'shallow', 
+                 exclusion_filter=None):
         """
         Initialize timestamp adapter.
         
         Args:
             base_adapter: The underlying adapter to wrap
             strategy: 'shallow', 'deep', or 'smart'
+            exclusion_filter: Optional filter to exclude files/folders
         """
         self.base_adapter = base_adapter
         self.strategy = strategy
         self.smart_threshold_days = 7  # For smart strategy
+        self.exclusion_filter = exclusion_filter
     
     async def get_children(self, node: Any):
         """Pass through to base adapter."""
@@ -87,12 +90,21 @@ class TimestampCalculationAdapter(AsyncTreeAdapter):
             path: Directory path
             
         Returns:
-            Latest timestamp from immediate children
+            Latest timestamp from immediate children (files only)
         """
         latest = None
         
         try:
             for item in path.iterdir():
+                # Only consider files, not directories
+                if item.is_dir():
+                    continue
+                
+                # Check exclusion filter if provided
+                if self.exclusion_filter:
+                    if self.exclusion_filter.should_exclude(item, is_dir=False):
+                        continue
+                    
                 try:
                     stat = item.stat()
                     mtime = datetime.fromtimestamp(stat.st_mtime)
@@ -114,7 +126,7 @@ class TimestampCalculationAdapter(AsyncTreeAdapter):
             path: Directory path
             
         Returns:
-            Latest timestamp from entire subtree
+            Latest timestamp from entire subtree (files only)
         """
         latest = None
         
@@ -122,11 +134,23 @@ class TimestampCalculationAdapter(AsyncTreeAdapter):
             for root, dirs, files in os.walk(path):
                 root_path = Path(root)
                 
-                # Check all items in this directory
-                for item_name in dirs + files:
-                    item_path = root_path / item_name
+                # Filter directories if exclusion filter is provided
+                if self.exclusion_filter:
+                    # Filter out excluded directories to avoid descending into them
+                    dirs[:] = [d for d in dirs 
+                              if not self.exclusion_filter.should_exclude(root_path / d, is_dir=True)]
+                
+                # Only check files, not directories
+                for file_name in files:
+                    file_path = root_path / file_name
+                    
+                    # Check exclusion filter if provided
+                    if self.exclusion_filter:
+                        if self.exclusion_filter.should_exclude(file_path, is_dir=False):
+                            continue
+                    
                     try:
-                        stat = item_path.stat()
+                        stat = file_path.stat()
                         mtime = datetime.fromtimestamp(stat.st_mtime)
                         
                         if latest is None or mtime > latest:

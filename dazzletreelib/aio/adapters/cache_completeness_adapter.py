@@ -126,6 +126,10 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
             'evictions': 0
         }
         self._depth_context = None  # Optional depth context for caching
+        
+        # Hybrid approach: Track node completeness separately
+        self.node_completeness = {}  # Path → depth mapping for all visited nodes
+        self.track_nodes = True  # Can be disabled to save memory
     
     def set_depth_context(self, depth: Optional[int]):
         """
@@ -147,6 +151,12 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
             children = []
             async for child in self.base_adapter.get_children(node):
                 children.append(child)
+                # Track child nodes if enabled
+                if self.track_nodes and hasattr(child, 'path'):
+                    child_path_str = str(child.path)
+                    # Record that this child was discovered at current depth + 1
+                    if child_path_str not in self.node_completeness:
+                        self.node_completeness[child_path_str] = 0  # Will be set properly below
             return children
         
         # Determine cache key and depth
@@ -156,6 +166,13 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
         
         # Use depth context if set, otherwise default to SHALLOW (depth=1)
         depth = self._depth_context if self._depth_context is not None else 1
+        
+        # Track this node being visited if enabled
+        if self.track_nodes:
+            path_str = str(path)
+            # Update node completeness - use max of existing and current depth
+            existing_depth = self.node_completeness.get(path_str, 0)
+            self.node_completeness[path_str] = max(existing_depth, depth)
         
         # Use existing cache infrastructure
         children_list, was_cached = await self.get_or_compute(
