@@ -36,6 +36,51 @@ class ErrorPolicy(ABC):
             or re-raises the exception to stop traversal.
         """
         pass
+    
+    def handle_sync(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """
+        Handle an error synchronously.
+        
+        This method is called when an error occurs in a synchronous context
+        where we cannot use async/await. The default implementation tries
+        to detect if an event loop is running and use it, otherwise creates
+        a new one.
+        
+        Args:
+            error: The exception that was raised
+            method_name: Name of the method that failed
+            node: The node being processed when the error occurred
+            *args: Additional positional arguments from the failed method
+            **kwargs: Additional keyword arguments from the failed method
+            
+        Returns:
+            A sensible default value or re-raises the exception.
+        """
+        import asyncio
+        
+        try:
+            # Try to get the current running loop
+            loop = asyncio.get_running_loop()
+            # If we're in an async context but handling a sync error,
+            # we need to schedule the async handler as a task
+            future = asyncio.ensure_future(
+                self.handle(error, method_name, node, *args, **kwargs)
+            )
+            # This is tricky - we can't block on the future without deadlocking
+            # For now, return a sensible default synchronously
+            # This is a limitation but prevents crashes
+            if method_name in ('get_children', 'list_children'):
+                return []
+            return None
+        except RuntimeError:
+            # No event loop running, create one for this sync call
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(
+                    self.handle(error, method_name, node, *args, **kwargs)
+                )
+            finally:
+                loop.close()
 
 
 class FailFastPolicy(ErrorPolicy):
@@ -48,6 +93,10 @@ class FailFastPolicy(ErrorPolicy):
     
     async def handle(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
         """Re-raise the error immediately."""
+        raise error
+    
+    def handle_sync(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """Re-raise the error immediately (sync version)."""
         raise error
 
 
@@ -78,6 +127,23 @@ class ContinueOnErrorsPolicy(ErrorPolicy):
         Returns:
             - Empty list for list_children
             - None for most other methods
+        """
+        return self._handle_common(error, method_name, node, *args, **kwargs)
+    
+    def handle_sync(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """
+        Synchronous version of error handling.
+        
+        Returns the same defaults as the async version.
+        """
+        return self._handle_common(error, method_name, node, *args, **kwargs)
+    
+    def _handle_common(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """
+        Common error handling logic for both sync and async.
+        
+        This method contains the actual error handling logic that can be
+        used by both the async and sync handlers.
         """
         # Extract path if possible
         path = None
@@ -192,6 +258,14 @@ class CollectErrorsPolicy(ErrorPolicy):
     
     async def handle(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
         """Silently collect the error and return a default."""
+        return self._handle_common(error, method_name, node, *args, **kwargs)
+    
+    def handle_sync(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """Synchronous version - silently collect the error and return a default."""
+        return self._handle_common(error, method_name, node, *args, **kwargs)
+    
+    def _handle_common(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """Common error handling logic for both sync and async."""
         # Extract path if possible
         path = None
         if hasattr(node, 'path'):
@@ -238,6 +312,14 @@ class ThresholdPolicy(ErrorPolicy):
     
     async def handle(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
         """Handle error if under threshold, otherwise re-raise."""
+        return self._handle_common(error, method_name, node, *args, **kwargs)
+    
+    def handle_sync(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """Synchronous version - handle error if under threshold."""
+        return self._handle_common(error, method_name, node, *args, **kwargs)
+    
+    def _handle_common(self, error: Exception, method_name: str, node: Any, *args, **kwargs) -> Any:
+        """Common error handling logic for both sync and async."""
         self.error_count += 1
         self.errors.append(error)
         

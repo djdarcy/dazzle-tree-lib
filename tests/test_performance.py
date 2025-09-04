@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 import random
 import string
+import pytest
 
 from dazzletreelib.sync.core import TreeNode
 from dazzletreelib.sync.adapters.filesystem import FileSystemNode, FileSystemAdapter
@@ -81,6 +82,7 @@ class PerformanceMetrics:
         return 0
 
 
+@pytest.mark.slow
 class TestPerformance(unittest.TestCase):
     """Test performance characteristics of DazzleTreeLib."""
     

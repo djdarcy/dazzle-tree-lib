@@ -98,15 +98,10 @@ class ErrorHandlingAdapter:
                 # so this path is less common
                 node = args[0] if args else None
                 
-                # For sync errors, we need to run the async handler synchronously
-                # This is not ideal but maintains compatibility
-                loop = asyncio.new_event_loop()
-                try:
-                    return loop.run_until_complete(
-                        self._policy.handle(e, name, node, *args, **kwargs)
-                    )
-                finally:
-                    loop.close()
+                # Use the policy's synchronous handler
+                # This avoids creating a new event loop which would crash
+                # if we're already in an async context
+                return self._policy.handle_sync(e, name, node, *args, **kwargs)
         
         return wrapper
     

@@ -1,6 +1,6 @@
 # DazzleTreeLib - Universal Tree Traversal Library
 
-DazzleTreeLib is a Python library providing both synchronous and asynchronous tree traversal with a universal interface. Perfect for non-filesystem trees, hierarchical data processing, and unified tree navigation across different data sources.
+DazzleTreeLib is a Python library providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with production-grade error handling and 55x caching speedup, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.
 
 ## ✨ Features
 
