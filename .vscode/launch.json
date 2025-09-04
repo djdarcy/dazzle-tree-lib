@@ -4,13 +4,172 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        // === TEST DEBUGGING CONFIGURATIONS ===
+        {
+            "name": "Debug: Current Test File",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "${file}",
+                "-v",
+                "-s"  // Show print statements
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        {
+            "name": "Debug: Current Working Test",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                // EDIT THIS LINE to point to the test you're currently working on
+                "tests/test_introspection.py",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        {
+            "name": "Debug: One-Off Test",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                // EDIT THIS LINE to point to the one-off test you want to debug
+                "tests/one-offs/test_error_handling.py",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        {
+            "name": "Debug: Specific Test Method",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                // EDIT THIS LINE with file::class::method format
+                // Example: tests/test_introspection.py::TestErrorHandlingIntrospection::test_get_adapter_chain_nested
+                "tests/test_introspection.py::TestErrorHandlingIntrospection::test_get_error_policy",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        
+        // === FULL TEST SUITE CONFIGURATIONS ===
+        {
+            "name": "Run: All Tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/",
+                "-v"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        {
+            "name": "Run: All Tests with Coverage",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/",
+                "-v",
+                "--cov=dazzletreelib",
+                "--cov-report=term-missing"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        
+        // === SPECIALIZED TEST CONFIGURATIONS ===
+        {
+            "name": "Debug: Error Handling Tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/test_error_handling.py",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        {
+            "name": "Debug: Introspection Tests",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/test_introspection.py",
+                "-v",
+                "-s"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        {
+            "name": "Debug: Async Tests Only",
+            "type": "python",
+            "request": "launch",
+            "module": "pytest",
+            "args": [
+                "tests/",
+                "-v",
+                "-s",
+                "-k", "async"  // Only run tests with 'async' in the name
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
+        },
+        
+        // === ORIGINAL CONFIGURATIONS ===
         {
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": false,
+            "env": {
+                "PYTHONDONTWRITEBYTECODE": "1"
+            }
         },
         {
             "name": "Python: Module",
@@ -18,28 +177,7 @@
             "request": "launch",
             "module": "DazzleTreeLib",
             "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "Python: Current File with Arguments",
-            "type": "python",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "args": [
-                // Add your arguments here
-                // Examples:
-                // "--input", "${workspaceFolder}/data/input.txt",
-                // "--output", "${workspaceFolder}/data/output.txt",
-                // Use VS Code's input picker to add arguments at runtime
-                "${command:pickArgs}"
-            ]
-        }
-    ],
-    "compounds": [
-        {
-            "name": "Server/Client",
-            "configurations": ["Python: Module", "Python: Current File"]
+            "justMyCode": false
         }
     ]
 }

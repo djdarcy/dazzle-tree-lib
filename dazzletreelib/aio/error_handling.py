@@ -206,6 +206,69 @@ class ErrorHandlingAdapter:
             # If the policy returns None or another non-iterable, stop iteration
             # This is appropriate for methods like get_children where we expect items
 
+    
+    # Introspection methods for testing and debugging
+    def get_adapter_by_type(self, adapter_class):
+        """
+        Find an adapter of a specific type in the chain.
+        
+        Args:
+            adapter_class: The class type to search for
+            
+        Returns:
+            The first adapter of the specified type, or None if not found
+        """
+        adapter = self
+        while adapter:
+            if isinstance(adapter, adapter_class):
+                return adapter
+            # Check both common attribute names
+            if hasattr(adapter, '_base_adapter'):
+                adapter = adapter._base_adapter
+            elif hasattr(adapter, 'base_adapter'):
+                adapter = adapter.base_adapter
+            else:
+                break
+        return None
+    
+    def get_adapter_chain(self):
+        """
+        Return a list of adapter class names in the chain.
+        
+        Returns:
+            List of class names from this adapter down through the chain
+        """
+        chain = []
+        adapter = self
+        while adapter:
+            chain.append(adapter.__class__.__name__)
+            # Check both common attribute names
+            if hasattr(adapter, '_base_adapter'):
+                adapter = adapter._base_adapter
+            elif hasattr(adapter, 'base_adapter'):
+                adapter = adapter.base_adapter
+            else:
+                break
+        return chain
+    
+    def get_error_policy(self):
+        """
+        Get the error policy used by this adapter.
+        
+        Returns:
+            The error policy instance
+        """
+        return self._policy
+    
+    def has_error_handling(self):
+        """
+        Check if this adapter has error handling configured.
+        
+        Returns:
+            True (this is an ErrorHandlingAdapter)
+        """
+        return True
+
 
 def create_resilient_adapter(base_adapter: Any, strict: bool = False, verbose: bool = True) -> ErrorHandlingAdapter:
     """

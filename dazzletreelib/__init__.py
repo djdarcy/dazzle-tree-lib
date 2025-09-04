@@ -16,7 +16,7 @@ Both implementations share the same concepts but are optimized for their
 respective execution models. Pick the one that fits your application.
 """
 
-__version__ = "0.9.2"  # Added PolicyDrivenErrorAdapter for error handling
+__version__ = "0.9.3"  # Added adapter introspection methods for testing/debugging
 
 # Re-export submodules for convenient access
 from . import sync
