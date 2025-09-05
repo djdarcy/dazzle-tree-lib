@@ -210,19 +210,15 @@ class AsyncFileSystemAdapter(AsyncTreeAdapter):
         def _scan_directory_sync(path: Path):
             """Synchronous function to be run in executor with proper resource management."""
             entries = []
-            try:
-                with os.scandir(path) as iterator:
-                    for entry in iterator:
-                        try:
-                            # Eagerly cache stat result to avoid issues with DirEntry lifetime
-                            entry.stat(follow_symlinks=self.follow_symlinks)
-                            entries.append(entry)
-                        except OSError:
-                            # Skip entries we can't access (e.g., broken symlinks)
-                            pass
-            except (OSError, PermissionError):
-                # Can't read directory
-                pass
+            with os.scandir(path) as iterator:
+                for entry in iterator:
+                    try:
+                        # Eagerly cache stat result to avoid issues with DirEntry lifetime
+                        entry.stat(follow_symlinks=self.follow_symlinks)
+                        entries.append(entry)
+                    except OSError:
+                        # Skip entries we can't access (e.g., broken symlinks)
+                        pass
             return entries
         
         # Get all entries with cached stats
