@@ -5,8 +5,47 @@ Key feature: Uses AsyncIterator for streaming child nodes.
 """
 
 import asyncio
+import threading
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional, Set, Any
+from typing import AsyncIterator, Optional, Set, Any, Tuple
+
+
+class CacheKeyMixin:
+    """Mixin providing standardized cache key generation for tree adapters.
+    
+    This mixin ensures cache keys are unique across different adapter types
+    and instances, preventing cache collision when adapters are stacked.
+    
+    Features:
+    - Unique class identification using module + class name
+    - Thread-safe instance numbering for deterministic keys
+    - Standardized key prefix generation
+    """
+    
+    def __init_subclass__(cls, **kwargs):
+        """Initialize class-level attributes when subclass is created."""
+        super().__init_subclass__(**kwargs)
+        # Create unique class identifier using full module path
+        cls._class_id = f"{cls.__module__}.{cls.__name__}"
+        # Initialize instance counter for this class
+        cls._instance_counter = 0
+        cls._counter_lock = threading.Lock()
+    
+    def __init__(self, *args, **kwargs):
+        """Initialize instance-level cache key attributes."""
+        super().__init__(*args, **kwargs)
+        # Assign unique instance number in thread-safe manner
+        with self.__class__._counter_lock:
+            self.__class__._instance_counter += 1
+            self._instance_number = self.__class__._instance_counter
+    
+    def _get_cache_key_prefix(self) -> Tuple[str, int]:
+        """Get standardized cache key prefix for this adapter instance.
+        
+        Returns:
+            Tuple of (class_identifier, instance_number)
+        """
+        return (self._class_id, self._instance_number)
 
 
 class AsyncTreeAdapter(ABC):

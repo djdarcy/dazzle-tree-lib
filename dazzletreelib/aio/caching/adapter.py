@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any, AsyncIterator
 from cachetools import TTLCache
 
-from ..core import AsyncTreeAdapter, AsyncTreeNode
+from ..core import AsyncTreeAdapter, AsyncTreeNode, CacheKeyMixin
 
 
-class CachingTreeAdapter(AsyncTreeAdapter):
+class CachingTreeAdapter(CacheKeyMixin, AsyncTreeAdapter):
     """
     Optional caching layer for any tree adapter.
     
@@ -118,16 +118,18 @@ class CachingTreeAdapter(AsyncTreeAdapter):
             if cache_key in self._scans_in_progress:
                 del self._scans_in_progress[cache_key]
     
-    def _get_cache_key(self, node: AsyncTreeNode) -> Any:
+    def _get_cache_key(self, node: AsyncTreeNode) -> Tuple[str, int, str, str]:
         """
         Generate cache key for a node.
         
-        Default implementation uses the node's path if available,
-        otherwise uses the node itself.
+        Returns tuple-based hierarchical key to prevent cache collision
+        when adapters are stacked.
+        
+        Returns:
+            Tuple of (class_id, instance_num, key_type, node_identifier)
         """
-        if hasattr(node, 'path'):
-            return node.path
-        return node
+        node_key = node.path if hasattr(node, 'path') else str(node)
+        return (*self._get_cache_key_prefix(), "node_data", str(node_key))
     
     def _check_cache(self, cache_key: Any) -> Optional[List[AsyncTreeNode]]:
         """

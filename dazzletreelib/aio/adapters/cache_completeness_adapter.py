@@ -10,7 +10,7 @@ from enum import IntEnum
 from pathlib import Path
 from collections import OrderedDict
 import asyncio
-from ..core import AsyncTreeAdapter
+from ..core import AsyncTreeAdapter, CacheKeyMixin
 
 
 class CacheCompleteness(IntEnum):
@@ -97,7 +97,7 @@ class CacheEntry:
         return self.completeness.satisfies(required)
 
 
-class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
+class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
     """
     Caching adapter that tracks scan completeness for intelligent reuse.
     
@@ -115,6 +115,7 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
             base_adapter: The underlying adapter to wrap
             max_memory_mb: Maximum cache size in megabytes
         """
+        super().__init__()  # Initialize parent classes (CacheKeyMixin, AsyncTreeAdapter)
         self.base_adapter = base_adapter
         self.cache: OrderedDict[str, CacheEntry] = OrderedDict()
         self.max_memory = max_memory_mb * 1024 * 1024
@@ -214,7 +215,7 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
         Returns:
             Tuple of (result, was_cached)
         """
-        cache_key = str(path)
+        cache_key = self._get_cache_key(path, depth)
         
         # Check if we have a sufficient cache entry
         if cache_key in self.cache:
@@ -285,7 +286,7 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
             new_data: New data with higher completeness
             new_depth: New depth level
         """
-        cache_key = str(path)
+        cache_key = self._get_cache_key(path, new_depth)
         new_completeness = CacheCompleteness.from_depth(new_depth)
         
         if cache_key in self.cache:
@@ -318,3 +319,20 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
         self.cache.clear()
         self.current_memory = 0
         # Don't reset stats - keep for analysis
+    
+    def _get_cache_key(self, path: Path, depth: Optional[int] = None) -> Tuple[str, int, str, str, str]:
+        """
+        Generate cache key for completeness data.
+        
+        Returns tuple-based hierarchical key to prevent cache collision
+        when adapters are stacked.
+        
+        Args:
+            path: Path being cached
+            depth: Depth requirement (None for complete scan)
+            
+        Returns:
+            Tuple of (class_id, instance_num, key_type, path, depth_spec)
+        """
+        depth_spec = str(depth) if depth is not None else "complete"
+        return (*self._get_cache_key_prefix(), "completeness", str(path), depth_spec)

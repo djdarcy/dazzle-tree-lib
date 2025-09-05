@@ -23,6 +23,7 @@ def run_tests(include_slow=False):
     cmd = [
         sys.executable, "-m", "pytest",
         "--ignore=tests/one-offs",  # Always ignore one-offs
+        "--ignore=tests/POC",       # Always ignore proof-of-concept demos
         "--tb=short",               # Short traceback format
         "--durations=10",            # Show 10 slowest tests
         "-v"                         # Verbose output
@@ -30,10 +31,10 @@ def run_tests(include_slow=False):
     
     if not include_slow:
         cmd.extend(["-m", "not slow"])
-        print("Running all tests EXCEPT slow tests and one-offs...")
+        print("Running all tests EXCEPT slow tests, one-offs, and POC demos...")
         print("=" * 60)
     else:
-        print("Running ALL tests including slow ones (but not one-offs)...")
+        print("Running ALL tests including slow ones (but not one-offs or POC)...")
         print("=" * 60)
     
     result = subprocess.run(cmd, cwd=Path(__file__).parent)
