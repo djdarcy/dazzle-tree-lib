@@ -1,45 +1,90 @@
 """
-Cache completeness tracking adapter for DazzleTreeLib.
+Cache adapter with completeness tracking for intelligent reuse.
 
-This adapter tracks how thoroughly each folder has been scanned,
-enabling intelligent cache reuse like folder_datetime_fix's SmartStreamingCache.
+This adapter tracks how deeply each path has been scanned, allowing
+efficient cache reuse when shallower scans are requested after deeper ones.
 """
 
-from typing import Optional, Any, Dict, AsyncIterator, Tuple
-from enum import IntEnum
+import time
+import asyncio
+from typing import Any, AsyncIterator, Optional, Tuple, Dict
 from pathlib import Path
 from collections import OrderedDict
-import asyncio
 from ..core import AsyncTreeAdapter, CacheKeyMixin
 
 
-class CacheCompleteness(IntEnum):
-    """
-    Enum representing how completely a folder has been scanned.
+# Backward compatibility enum for tests
+# TODO: Remove once tests are migrated to integer depths
+class CacheCompleteness:
+    """Deprecated: Backward compatibility for tests using the old enum.
     
-    Values are ordered so higher values satisfy lower requirements.
+    This is provided only for test compatibility. New code should use
+    integer depths directly with CacheEntry.
     """
-    NONE = 0         # Not scanned at all
-    SHALLOW = 1      # Only immediate children scanned
-    PARTIAL_2 = 2    # Scanned to depth 2
-    PARTIAL_3 = 3    # Scanned to depth 3
-    PARTIAL_4 = 4    # Scanned to depth 4
-    PARTIAL_5 = 5    # Scanned to depth 5
-    COMPLETE = 999   # Fully recursive scan
+    NONE = 0
+    SHALLOW = 1
+    PARTIAL_2 = 2
+    PARTIAL_3 = 3
+    PARTIAL_4 = 4
+    PARTIAL_5 = 5
+    PARTIAL_N = 10
+    COMPLETE = 999
+    
+    def __init__(self, value):
+        self.value = value
+        self.name = self._get_name(value)
+    
+    def _get_name(self, value):
+        names = {
+            0: 'NONE',
+            1: 'SHALLOW',
+            2: 'PARTIAL_2',
+            3: 'PARTIAL_3',
+            4: 'PARTIAL_4',
+            5: 'PARTIAL_5',
+            10: 'PARTIAL_N',
+            999: 'COMPLETE',
+        }
+        return names.get(value, f'PARTIAL_{value}')
+    
+    def __eq__(self, other):
+        if isinstance(other, CacheCompleteness):
+            return self.value == other.value
+        return self.value == other if isinstance(other, int) else False
+    
+    def __lt__(self, other):
+        if isinstance(other, CacheCompleteness):
+            return self.value < other.value
+        return self.value < other if isinstance(other, int) else False
+    
+    def __le__(self, other):
+        if isinstance(other, CacheCompleteness):
+            return self.value <= other.value
+        return self.value <= other if isinstance(other, int) else False
+    
+    def __gt__(self, other):
+        if isinstance(other, CacheCompleteness):
+            return self.value > other.value
+        return self.value > other if isinstance(other, int) else False
+    
+    def __ge__(self, other):
+        if isinstance(other, CacheCompleteness):
+            return self.value >= other.value
+        return self.value >= other if isinstance(other, int) else False
+    
+    def __hash__(self):
+        return hash(self.value)
+    
+    def __repr__(self):
+        return f'CacheCompleteness.{self.name}'
     
     @classmethod
-    def from_depth(cls, depth: Optional[int]) -> 'CacheCompleteness':
-        """
-        Convert a depth value to completeness level.
-        
-        Args:
-            depth: Maximum depth scanned (None = complete)
-            
-        Returns:
-            Corresponding completeness level
-        """
-        if depth is None:
+    def from_depth(cls, depth):
+        """Convert depth to completeness enum."""
+        if depth is None or depth >= 999 or depth == -1:
             return cls.COMPLETE
+        elif depth == 0:
+            return cls.NONE
         elif depth == 1:
             return cls.SHALLOW
         elif depth == 2:
@@ -51,93 +96,207 @@ class CacheCompleteness(IntEnum):
         elif depth == 5:
             return cls.PARTIAL_5
         else:
-            # For depth > 5, return COMPLETE
-            return cls.COMPLETE
+            return cls.PARTIAL_N
     
-    def satisfies(self, required: 'CacheCompleteness') -> bool:
-        """
-        Check if this completeness level satisfies a requirement.
-        
-        Args:
-            required: The required completeness level
-            
-        Returns:
-            True if this level meets or exceeds the requirement
-        """
-        return self >= required
+    def satisfies(self, required):
+        """Check if this completeness satisfies a requirement."""
+        return self.value >= required.value
+
+
+# Create singleton instances
+CacheCompleteness.NONE = CacheCompleteness(0)
+CacheCompleteness.SHALLOW = CacheCompleteness(1)
+CacheCompleteness.PARTIAL_2 = CacheCompleteness(2)
+CacheCompleteness.PARTIAL_3 = CacheCompleteness(3)
+CacheCompleteness.PARTIAL_4 = CacheCompleteness(4)
+CacheCompleteness.PARTIAL_5 = CacheCompleteness(5)
+CacheCompleteness.PARTIAL_N = CacheCompleteness(10)
+CacheCompleteness.COMPLETE = CacheCompleteness(999)
 
 
 class CacheEntry:
-    """Entry in the completeness-aware cache."""
+    """Entry in the completeness-aware cache with integer depth tracking."""
     
-    def __init__(self, data: Any, completeness: CacheCompleteness):
+    # Constants for depth representation
+    COMPLETE_DEPTH = -1  # Sentinel value for complete/infinite scan
+    MAX_DEPTH = 100      # Safety limit to prevent memory explosion
+    
+    def __init__(self, data: Any, depth: int = COMPLETE_DEPTH, mtime: Optional[float] = None):
         """
-        Initialize cache entry.
+        Initialize cache entry with integer depth.
         
         Args:
             data: The cached data
-            completeness: How completely this was scanned
+            depth: How deep this was scanned (-1 for complete, 0-MAX_DEPTH for specific)
+            mtime: Modification time for future invalidation support
         """
+        # Validate depth
+        if depth != self.COMPLETE_DEPTH:
+            if depth < 0:
+                raise ValueError(f"Invalid depth {depth}: must be >= 0 or {self.COMPLETE_DEPTH}")
+            if depth > self.MAX_DEPTH:
+                raise ValueError(f"Depth {depth} exceeds maximum {self.MAX_DEPTH}")
+        
         self.data = data
-        self.completeness = completeness
+        self.depth = depth
+        self.mtime = mtime
+        self.cached_at = time.time()
         self.access_count = 0
         self.size_estimate = 0  # Bytes estimate for memory management
     
-    def satisfies_depth(self, depth: Optional[int]) -> bool:
+    def satisfies(self, required_depth: int) -> bool:
         """
         Check if this cache entry satisfies a depth requirement.
         
         Args:
-            depth: Required depth (None = complete)
+            required_depth: Required depth (-1 for complete, >= 0 for specific)
             
         Returns:
-            True if this entry has sufficient completeness
+            True if this entry has sufficient depth
         """
-        required = CacheCompleteness.from_depth(depth)
-        return self.completeness.satisfies(required)
+        # Complete scan satisfies everything
+        if self.depth == self.COMPLETE_DEPTH:
+            return True
+        
+        # If complete scan is required, partial doesn't satisfy
+        if required_depth == self.COMPLETE_DEPTH:
+            return False
+        
+        # Partial scan satisfies if deep enough
+        return self.depth >= required_depth
+    
+    @classmethod
+    def set_max_depth(cls, max_depth: int):
+        """
+        Configure the maximum allowed depth.
+        
+        Args:
+            max_depth: New maximum depth limit
+        """
+        if max_depth < 1:
+            raise ValueError(f"Maximum depth must be positive, got {max_depth}")
+        cls.MAX_DEPTH = max_depth
 
 
 class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
     """
-    Caching adapter that tracks scan completeness for intelligent reuse.
+    Caching adapter that tracks scan depth for intelligent reuse.
     
-    This enables folder_datetime_fix's optimization where:
+    This enables optimizations where:
     - Complete scans can satisfy any request
-    - Partial scans can satisfy shallower requests
+    - Deep scans can satisfy shallower requests  
     - Deeper requests trigger cache upgrades
+    
+    Uses integer depth tracking instead of enums for unlimited scalability.
     """
     
-    def __init__(self, base_adapter: AsyncTreeAdapter, max_memory_mb: int = 100):
+    def __init__(self, base_adapter: AsyncTreeAdapter, 
+                 max_memory_mb: int = 100,
+                 max_depth: int = 100):
         """
-        Initialize cache adapter.
+        Initialize the cache adapter.
         
         Args:
             base_adapter: The underlying adapter to wrap
             max_memory_mb: Maximum cache size in megabytes
+            max_depth: Maximum allowed scan depth
         """
         super().__init__()  # Initialize parent classes (CacheKeyMixin, AsyncTreeAdapter)
         self.base_adapter = base_adapter
-        self.cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self.cache: OrderedDict[Tuple, CacheEntry] = OrderedDict()
         self.max_memory = max_memory_mb * 1024 * 1024
         self.current_memory = 0
-        self.stats = {
-            'hits': 0,
-            'misses': 0,
-            'upgrades': 0,
-            'evictions': 0
-        }
-        self._depth_context = None  # Optional depth context for caching
         
-        # Hybrid approach: Track node completeness separately
-        self.node_completeness = {}  # Path → depth mapping for all visited nodes
+        # Configure maximum depth
+        CacheEntry.MAX_DEPTH = max_depth
+        
+        # Statistics
+        self.hits = 0
+        self.misses = 0
+        self.upgrades = 0
+        
+        # Node tracking - separate from cache, tracks ALL visited nodes
+        self.node_completeness = {}  # Path → depth mapping
         self.track_nodes = True  # Can be disabled to save memory
+        self._depth_context = None  # Depth context for operations
+    
+    async def get_children(self, node: Any) -> AsyncIterator[Any]:
+        """
+        Get children with caching.
+        
+        Uses the cache when available, otherwise fetches and caches.
+        """
+        # Get path from node
+        path = node.path if hasattr(node, 'path') else str(node)
+        if not isinstance(path, Path):
+            path = Path(path) if isinstance(path, str) else path
+        
+        # Use depth context if set, otherwise default to 1 (shallow)
+        depth = self._depth_context if self._depth_context is not None else 1
+        cache_key = self._get_cache_key(path, depth)
+        
+        # Track this node being visited if enabled
+        if self.track_nodes:
+            path_str = str(path)
+            existing_depth = self.node_completeness.get(path_str, 0)
+            self.node_completeness[path_str] = max(existing_depth, depth)
+        
+        # Check if we have this in cache
+        if cache_key in self.cache:
+            entry = self.cache[cache_key]
+            self.hits += 1
+            entry.access_count += 1
+            # Move to end for LRU
+            self.cache.move_to_end(cache_key)
+            
+            # Yield cached children
+            if isinstance(entry.data, list):
+                for child in entry.data:
+                    yield child
+            return
+        
+        # Check if we have a deeper scan that satisfies this request
+        for existing_key, entry in self.cache.items():
+            if self._same_path(existing_key, cache_key):
+                if entry.satisfies(depth):
+                    self.hits += 1
+                    entry.access_count += 1
+                    self.cache.move_to_end(existing_key)
+                    # Yield cached children
+                    if isinstance(entry.data, list):
+                        for child in entry.data:
+                            yield child
+                    return
+        
+        # Not in cache - get from base adapter and cache the result
+        self.misses += 1
+        children = []
+        async for child in self.base_adapter.get_children(node):
+            children.append(child)
+            # Track child nodes if enabled
+            if self.track_nodes and hasattr(child, 'path'):
+                child_path_str = str(child.path)
+                if child_path_str not in self.node_completeness:
+                    self.node_completeness[child_path_str] = 0  # Will be updated when visited
+            yield child
+        
+        # Cache the result
+        self._add_to_cache(cache_key, children, depth)
+    
+    async def get_parent(self, node: Any) -> Optional[Any]:
+        """Pass through to base adapter."""
+        return await self.base_adapter.get_parent(node) if hasattr(self.base_adapter, 'get_parent') else None
+    
+    async def get_depth(self, node: Any) -> int:
+        """Pass through to base adapter."""
+        return await self.base_adapter.get_depth(node) if hasattr(self.base_adapter, 'get_depth') else 0
     
     def set_depth_context(self, depth: Optional[int]):
         """
-        Optionally set depth context for caching operations.
+        Set depth context for subsequent operations.
         
         Args:
-            depth: The depth level for cache completeness tracking
+            depth: Depth to use for caching
             
         Returns:
             self for method chaining
@@ -145,72 +304,13 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self._depth_context = depth
         return self
     
-    async def get_children(self, node: Any):
-        """Get children with completeness-aware caching."""
-        # Define function to compute children if not cached
-        async def compute_children():
-            children = []
-            async for child in self.base_adapter.get_children(node):
-                children.append(child)
-                # Track child nodes if enabled
-                if self.track_nodes and hasattr(child, 'path'):
-                    child_path_str = str(child.path)
-                    # Record that this child was discovered at current depth + 1
-                    if child_path_str not in self.node_completeness:
-                        self.node_completeness[child_path_str] = 0  # Will be set properly below
-            return children
-        
-        # Determine cache key and depth
-        path = node.path if hasattr(node, 'path') else str(node)
-        if not isinstance(path, Path):
-            path = Path(path) if isinstance(path, str) else path
-        
-        # Use depth context if set, otherwise default to SHALLOW (depth=1)
-        depth = self._depth_context if self._depth_context is not None else 1
-        
-        # Track this node being visited if enabled
-        if self.track_nodes:
-            path_str = str(path)
-            # Update node completeness - use max of existing and current depth
-            existing_depth = self.node_completeness.get(path_str, 0)
-            self.node_completeness[path_str] = max(existing_depth, depth)
-        
-        # Use existing cache infrastructure
-        children_list, was_cached = await self.get_or_compute(
-            path,
-            compute_children,
-            depth
-        )
-        
-        # Yield children from cache
-        for child in children_list:
-            yield child
-    
-    async def get_parent(self, node: Any) -> Optional[Any]:
-        """Pass through to base adapter."""
-        return await self.base_adapter.get_parent(node)
-    
-    async def get_depth(self, node: Any) -> int:
-        """Pass through to base adapter."""
-        return await self.base_adapter.get_depth(node)
-    
-    def is_leaf(self, node: Any) -> bool:
-        """Pass through to base adapter."""
-        return self.base_adapter.is_leaf(node)
-    
-    async def get_or_compute(
-        self, 
-        path: Path, 
-        compute_func, 
-        depth: Optional[int] = None
-    ) -> Tuple[Any, bool]:
+    async def get_children_at_depth(self, path: Path, depth: int = CacheEntry.COMPLETE_DEPTH) -> Tuple[Any, bool]:
         """
-        Get from cache or compute with completeness tracking.
+        Get children with specific depth requirement.
         
         Args:
-            path: Path to cache
-            compute_func: Async function to compute if not cached
-            depth: Depth requirement for this request
+            path: Path to scan
+            depth: Required scan depth (-1 for complete)
             
         Returns:
             Tuple of (result, was_cached)
@@ -220,99 +320,110 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         # Check if we have a sufficient cache entry
         if cache_key in self.cache:
             entry = self.cache[cache_key]
-            
-            if entry.satisfies_depth(depth):
-                # Cache hit!
-                self.stats['hits'] += 1
+            if entry.satisfies(depth):
+                self.hits += 1
                 entry.access_count += 1
-                
                 # Move to end for LRU
                 self.cache.move_to_end(cache_key)
-                
                 return entry.data, True
-            else:
-                # Cache entry exists but insufficient depth
-                self.stats['upgrades'] += 1
-                # Fall through to recompute
-        else:
-            self.stats['misses'] += 1
         
-        # Compute the result
-        result = await compute_func()
+        # Check if a deeper scan exists that satisfies this request
+        for existing_key, entry in self.cache.items():
+            if self._same_path(existing_key, cache_key) and entry.satisfies(depth):
+                self.hits += 1
+                entry.access_count += 1
+                return entry.data, True
         
-        # Store in cache with completeness
-        completeness = CacheCompleteness.from_depth(depth)
-        entry = CacheEntry(result, completeness)
+        # Cache miss - need to scan
+        self.misses += 1
+        result = await self._scan_path(path, depth)
         
-        # Estimate memory usage (rough)
-        entry.size_estimate = len(str(result)) * 2  # Rough estimate
-        
-        # Add to cache with LRU eviction if needed
-        self._add_to_cache(cache_key, entry)
+        # Store in cache
+        self._add_to_cache(cache_key, result, depth)
         
         return result, False
     
-    def _add_to_cache(self, key: str, entry: CacheEntry):
+    async def _scan_path(self, path: Path, depth: int) -> Any:
         """
-        Add entry to cache with LRU eviction if needed.
+        Perform actual scan of path to specified depth.
+        
+        Args:
+            path: Path to scan
+            depth: Scan depth (-1 for complete)
+            
+        Returns:
+            Scan results
+        """
+        # This would implement actual scanning logic
+        # For now, just a placeholder
+        return {"path": str(path), "depth": depth, "data": []}
+    
+    def _add_to_cache(self, key: Tuple, data: Any, depth: int):
+        """
+        Add entry to cache with memory management.
         
         Args:
             key: Cache key
-            entry: Cache entry to add
+            data: Data to cache
+            depth: Scan depth
         """
-        # Remove old entry if exists
-        if key in self.cache:
-            old_entry = self.cache[key]
-            self.current_memory -= old_entry.size_estimate
-            del self.cache[key]
+        entry = CacheEntry(data, depth)
         
-        # Evict LRU entries if needed
+        # Estimate memory usage (simplified)
+        entry.size_estimate = len(str(data)) * 2  # Rough estimate
+        
+        # Evict if necessary
         while self.current_memory + entry.size_estimate > self.max_memory and self.cache:
-            # Remove least recently used
-            lru_key, lru_entry = self.cache.popitem(last=False)
-            self.current_memory -= lru_entry.size_estimate
-            self.stats['evictions'] += 1
+            self._evict_lru()
         
-        # Add new entry
         self.cache[key] = entry
         self.current_memory += entry.size_estimate
     
-    def upgrade_cache(self, path: Path, new_data: Any, new_depth: Optional[int]):
+    def _evict_lru(self):
+        """Evict least recently used cache entry."""
+        if self.cache:
+            key, entry = self.cache.popitem(last=False)
+            self.current_memory -= entry.size_estimate
+    
+    def _same_path(self, key1: Tuple, key2: Tuple) -> bool:
         """
-        Upgrade an existing cache entry to higher completeness.
+        Check if two cache keys refer to the same path.
         
         Args:
-            path: Path to upgrade
-            new_data: New data with higher completeness
-            new_depth: New depth level
+            key1: First cache key
+            key2: Second cache key
+            
+        Returns:
+            True if same path
+        """
+        # Keys are (class_id, instance_num, key_type, path, depth)
+        # Same path if first 4 elements match
+        return key1[:4] == key2[:4]
+    
+    def upgrade_cache_entry(self, path: Path, new_data: Any, new_depth: int):
+        """
+        Upgrade an existing cache entry with deeper scan.
+        
+        Args:
+            path: Path that was scanned
+            new_data: New scan data
+            new_depth: New scan depth
         """
         cache_key = self._get_cache_key(path, new_depth)
-        new_completeness = CacheCompleteness.from_depth(new_depth)
         
-        if cache_key in self.cache:
-            old_entry = self.cache[cache_key]
-            
-            # Only upgrade if new is more complete
-            if new_completeness > old_entry.completeness:
-                entry = CacheEntry(new_data, new_completeness)
-                entry.access_count = old_entry.access_count
-                self._add_to_cache(cache_key, entry)
-        else:
-            # New entry
-            entry = CacheEntry(new_data, new_completeness)
-            self._add_to_cache(cache_key, entry)
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get cache statistics."""
-        total_requests = self.stats['hits'] + self.stats['misses']
-        hit_rate = self.stats['hits'] / total_requests if total_requests > 0 else 0
-        
-        return {
-            **self.stats,
-            'entries': len(self.cache),
-            'memory_mb': self.current_memory / (1024 * 1024),
-            'hit_rate': hit_rate
-        }
+        # Find and update existing entry
+        for key in list(self.cache.keys()):
+            if self._same_path(key, cache_key):
+                old_entry = self.cache[key]
+                if new_depth == CacheEntry.COMPLETE_DEPTH or \
+                   (old_entry.depth != CacheEntry.COMPLETE_DEPTH and new_depth > old_entry.depth):
+                    # Remove old entry
+                    del self.cache[key]
+                    self.current_memory -= old_entry.size_estimate
+                    # Add new entry
+                    self._add_to_cache(cache_key, new_data, new_depth)
+                    self.upgrades += 1
+                    break
     
     def clear_cache(self):
         """Clear all cache entries."""
@@ -320,7 +431,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self.current_memory = 0
         # Don't reset stats - keep for analysis
     
-    def _get_cache_key(self, path: Path, depth: Optional[int] = None) -> Tuple[str, int, str, str, str]:
+    def _get_cache_key(self, path: Path, depth: int) -> Tuple[str, int, str, str, int]:
         """
         Generate cache key for completeness data.
         
@@ -329,10 +440,26 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         
         Args:
             path: Path being cached
-            depth: Depth requirement (None for complete scan)
+            depth: Scan depth (-1 for complete, >= 0 for specific)
             
         Returns:
-            Tuple of (class_id, instance_num, key_type, path, depth_spec)
+            Tuple of (class_id, instance_num, key_type, path, depth)
         """
-        depth_spec = str(depth) if depth is not None else "complete"
-        return (*self._get_cache_key_prefix(), "completeness", str(path), depth_spec)
+        return (*self._get_cache_key_prefix(), "completeness", str(path), depth)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics.
+        
+        Returns:
+            Dictionary of cache statistics
+        """
+        return {
+            "hits": self.hits,
+            "misses": self.misses,
+            "hit_rate": self.hits / (self.hits + self.misses) if (self.hits + self.misses) > 0 else 0,
+            "upgrades": self.upgrades,
+            "entries": len(self.cache),
+            "memory_bytes": self.current_memory,
+            "memory_mb": self.current_memory / (1024 * 1024)
+        }

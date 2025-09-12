@@ -6,7 +6,7 @@ without exposing implementation details as part of the public API.
 
 from typing import Dict, Any, Optional
 from pathlib import Path
-from ..aio.adapters.cache_completeness_adapter import CacheCompleteness
+from ..aio.adapters.cache_completeness_adapter import CacheEntry
 
 
 class TestableCache:
@@ -48,21 +48,21 @@ class TestableCache:
         # Check for CompletenessAwareCacheAdapter's cache
         if hasattr(self._adapter, 'cache'):
             cache = self._adapter.cache
-            # If cache has CacheEntry objects with completeness
+            # If cache has CacheEntry objects with depth
             if cache and len(cache) > 0:
                 first_value = next(iter(cache.values()), None)
-                if first_value and hasattr(first_value, 'completeness'):
+                if first_value and hasattr(first_value, 'depth'):
                     return {
                         'total_entries': len(cache),
                         'shallow_count': sum(1 for e in cache.values() 
-                                           if e.completeness == CacheCompleteness.SHALLOW),
+                                           if e.depth == 1),
                         'partial_count': sum(1 for e in cache.values()
-                                           if CacheCompleteness.PARTIAL_2 <= e.completeness <= CacheCompleteness.PARTIAL_5),
+                                           if 2 <= e.depth <= 5),
                         'complete_count': sum(1 for e in cache.values()
-                                            if e.completeness == CacheCompleteness.COMPLETE),
+                                            if e.depth == CacheEntry.COMPLETE_DEPTH),
                         'has_cache': True
                     }
-            # Basic cache without completeness tracking
+            # Basic cache without depth tracking
             return {
                 'total_entries': len(cache),
                 'shallow_count': 0,
@@ -101,51 +101,54 @@ class TestableCache:
         """
         if not hasattr(self._adapter, 'cache'):
             return False
-        # Cache uses string keys
+        # Check if path is in any cache key (keys are now tuples)
         path_str = str(path)
+        for key in self._adapter.cache.keys():
+            if isinstance(key, tuple) and len(key) >= 4:
+                # Key format: (class_id, instance_num, key_type, path, depth)
+                if path_str == key[3]:
+                    return True
+        # Fallback for simple string keys
         return path_str in self._adapter.cache
     
-    def get_completeness(self, path: Path) -> Optional[CacheCompleteness]:
-        """Get completeness level for a specific path.
+    def get_completeness(self, path: Path) -> Optional[int]:
+        """Get completeness level (depth) for a specific path.
         
         Args:
             path: Path to check
             
         Returns:
-            CacheCompleteness level or None if not cached
+            Depth level (-1 for complete, 0+ for specific depths) or None if not cached
         """
         if not hasattr(self._adapter, 'cache'):
             return None
-        # Cache uses string keys
-        path_str = str(path)
-        if path_str not in self._adapter.cache:
-            return None
-        return self._adapter.cache[path_str].completeness
+        # Need to check all cache keys since they are tuples now
+        for key, entry in self._adapter.cache.items():
+            if isinstance(key, tuple) and len(key) >= 4:
+                # Key format: (class_id, instance_num, key_type, path, depth)
+                if str(path) == key[3]:
+                    return entry.depth
+        return None
     
     def has_partial_depth(self, path: Path, expected_depth: int) -> bool:
         """Check if path has expected partial depth level.
         
         Args:
             path: Path to check
-            expected_depth: Expected depth (2-5 for PARTIAL_2-5)
+            expected_depth: Expected depth
             
         Returns:
             True if path has the expected partial depth
         """
-        completeness = self.get_completeness(path)
-        if completeness is None:
+        actual_depth = self.get_completeness(path)
+        if actual_depth is None:
             return False
         
-        # Map depth to completeness enum
-        if expected_depth == 1:
-            return completeness == CacheCompleteness.SHALLOW
-        elif 2 <= expected_depth <= 5:
-            # PARTIAL_2 = 2, PARTIAL_3 = 3, etc.
-            return completeness == expected_depth
-        elif expected_depth >= 6:
-            # Anything deeper than 5 should be COMPLETE
-            return completeness == CacheCompleteness.COMPLETE
-        return False
+        # Direct depth comparison
+        if actual_depth == CacheEntry.COMPLETE_DEPTH:
+            # Complete scan satisfies any depth
+            return True
+        return actual_depth >= expected_depth
     
     def verify_cache_reuse(self, path: Path) -> bool:
         """Verify that a path is available for cache reuse.
@@ -156,7 +159,8 @@ class TestableCache:
         Returns:
             True if path is cached and can be reused
         """
-        return self.was_path_cached(path) and self.get_completeness(path) != CacheCompleteness.NONE
+        depth = self.get_completeness(path)
+        return depth is not None and depth != 0
     
     def was_node_visited(self, path: Path) -> bool:
         """Check if a node was visited during traversal (node tracking).
@@ -191,24 +195,14 @@ class TestableCache:
             Depth to which node was scanned, or None if not visited
         """
         if not hasattr(self._adapter, 'node_completeness'):
-            # Fallback to completeness-based depth if no node tracking
-            completeness = self.get_completeness(path)
-            if completeness is None:
+            # Fallback to depth if no node tracking
+            depth = self.get_completeness(path)
+            if depth is None:
                 return None
-            # Map completeness back to depth
-            if completeness == CacheCompleteness.SHALLOW:
-                return 1
-            elif completeness == CacheCompleteness.PARTIAL_2:
-                return 2
-            elif completeness == CacheCompleteness.PARTIAL_3:
-                return 3
-            elif completeness == CacheCompleteness.PARTIAL_4:
-                return 4
-            elif completeness == CacheCompleteness.PARTIAL_5:
-                return 5
-            elif completeness == CacheCompleteness.COMPLETE:
+            # Return depth directly (convert -1 to 999 for backward compat)
+            if depth == CacheEntry.COMPLETE_DEPTH:
                 return 999
-            return 0
+            return depth
         
         path_str = str(path)
         return self._adapter.node_completeness.get(path_str)

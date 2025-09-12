@@ -23,6 +23,7 @@ from .adapters import (
     AsyncFilteredFileSystemAdapter,
     TimestampCalculationAdapter,
     CompletenessAwareCacheAdapter,
+    CacheEntry,
     CacheCompleteness,
     DepthTrackingAdapter,
 )
@@ -89,6 +90,7 @@ __all__ = [
     'AsyncFilteredFileSystemAdapter',
     'TimestampCalculationAdapter',
     'CompletenessAwareCacheAdapter',
+    'CacheEntry',
     'CacheCompleteness',
     'DepthTrackingAdapter',
     # Error handling

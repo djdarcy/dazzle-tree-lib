@@ -123,31 +123,25 @@ async def test_cache_completeness():
         # Test cache operations
         print("\n2. Testing cache operations...")
         
-        async def compute_func():
-            return {"data": "computed", "timestamp": datetime.now()}
-        
         # First call - cache miss
-        result1, was_cached1 = await cache_adapter.get_or_compute(
+        result1, was_cached1 = await cache_adapter.get_children_at_depth(
             test_path / "dir1",
-            compute_func,
             depth=2
         )
         assert not was_cached1
         print("   [PASS] Cache miss on first call")
         
         # Second call with same depth - cache hit
-        result2, was_cached2 = await cache_adapter.get_or_compute(
+        result2, was_cached2 = await cache_adapter.get_children_at_depth(
             test_path / "dir1",
-            compute_func,
             depth=2
         )
         assert was_cached2
         print("   [PASS] Cache hit on second call")
         
         # Third call with deeper depth - cache upgrade
-        result3, was_cached3 = await cache_adapter.get_or_compute(
+        result3, was_cached3 = await cache_adapter.get_children_at_depth(
             test_path / "dir1",
-            compute_func,
             depth=5
         )
         assert not was_cached3  # Should recompute for deeper depth

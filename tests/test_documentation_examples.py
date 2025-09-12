@@ -168,7 +168,7 @@ def test_sync_vs_async_compatibility():
             "Sync and async found different files"
         
         print(f"[PASS] Sync and async both found {len(sync_files)} files!")
-        return True
+        # Don't return True - pytest expects None from test functions
 
 
 def run_all_tests():

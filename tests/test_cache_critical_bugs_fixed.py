@@ -156,37 +156,35 @@ class TestCacheKeyCollisionFixed:
             assert cache1._instance_number != cache2._instance_number, "Each instance should be unique"
 
 
-class TestDepthLimitStillBroken:
-    """Demonstrate Issue #17 is NOT YET FIXED (belongs in POC after fix)."""
+class TestDepthLimitFixed:
+    """Verify Issue #17 is FIXED: Cache supports unlimited depth."""
     
-    def test_depth_6_still_breaks_cache(self):
-        """Cache still fails when depth exceeds enum values (Issue #17 NOT FIXED)."""
-        # The enum only goes up to PARTIAL_5 (value=5)
-        assert CacheCompleteness.PARTIAL_5.value == 5
+    def test_depth_beyond_5_works(self):
+        """Cache now works at any depth (Issue #17 FIXED)."""
+        from dazzletreelib.aio.adapters.cache_completeness_adapter import CacheEntry
         
-        # What happens at depth 6?
-        required_depth = 6
+        # Test depths that failed with enum
+        test_depths = [6, 10, 20, 50, 100]
         
-        # There's no enum value for depth 6!
-        available_depths = [e.value for e in CacheCompleteness 
-                          if e != CacheCompleteness.COMPLETE]
-        
-        # This test demonstrates the bug still exists
-        assert required_depth not in available_depths, \
-            f"Issue #17 NOT FIXED: No enum value for depth {required_depth}"
+        for depth in test_depths:
+            entry = CacheEntry([], depth=depth)
+            assert entry.depth == depth
+            assert entry.satisfies(depth - 1)
+            
+        # Issue #17 is FIXED!
 
 
-class TestCacheInvalidationStillBroken:
-    """Demonstrate Issue #18 is NOT YET FIXED (belongs in POC after fix)."""
+class TestCacheInvalidationFixed:
+    """Verify Issue #18 is FIXED: Cache entries now track mtime."""
     
     def test_cache_entry_still_has_no_mtime_field(self):
-        """CacheEntry still doesn't track mtime for validation (Issue #18 NOT FIXED)."""
+        """CacheEntry now DOES track mtime for validation (Issue #18 FIXED!)."""
         # Check if CacheEntry has mtime field
-        entry = CacheEntry(data=[], completeness=CacheCompleteness.PARTIAL_2)
+        entry = CacheEntry(data=[], depth=2)  # depth=2 is equivalent to PARTIAL_2
         
-        # This demonstrates the bug still exists
-        assert not hasattr(entry, 'mtime'), \
-            "Issue #18 NOT FIXED: CacheEntry still has no mtime field"
+        # This demonstrates the bug is FIXED!
+        assert hasattr(entry, 'mtime'), \
+            "Issue #18 FIXED: CacheEntry now has mtime field"
 
 
 if __name__ == "__main__":

@@ -99,17 +99,17 @@ class TestCacheKeyUniqueness:
         # Keys with different depths
         key_depth_5 = adapter._get_cache_key(path, depth=5)
         key_depth_10 = adapter._get_cache_key(path, depth=10)
-        key_complete = adapter._get_cache_key(path, depth=None)
+        key_complete = adapter._get_cache_key(path, depth=-1)  # -1 is COMPLETE_DEPTH
         
         # All keys should be different
         assert key_depth_5 != key_depth_10
         assert key_depth_5 != key_complete
         assert key_depth_10 != key_complete
         
-        # Verify depth is in key
-        assert "5" in key_depth_5[-1]
-        assert "10" in key_depth_10[-1]
-        assert "complete" in key_complete[-1]
+        # Verify depth is in key (last element is now an integer)
+        assert key_depth_5[-1] == 5
+        assert key_depth_10[-1] == 10
+        assert key_complete[-1] == -1
 
 
 class TestCacheStackingWithoutCollision:
@@ -206,8 +206,8 @@ class TestDeterministicInstanceNumbers:
         # Get instance numbers
         caching1_num = caching1._get_cache_key(node)[1]
         caching2_num = caching2._get_cache_key(node)[1]
-        complete1_num = complete1._get_cache_key(path)[1]
-        complete2_num = complete2._get_cache_key(path)[1]
+        complete1_num = complete1._get_cache_key(path, depth=5)[1]  # Need depth argument
+        complete2_num = complete2._get_cache_key(path, depth=5)[1]  # Need depth argument
         
         # Each class should have its own counter
         assert caching2_num > caching1_num, "CachingTreeAdapter counter should increment"
