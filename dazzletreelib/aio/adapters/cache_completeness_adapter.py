@@ -254,7 +254,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
     Uses integer depth tracking instead of enums for unlimited scalability.
     """
     
-    def __init__(self, base_adapter: AsyncTreeAdapter, 
+    def __init__(self, base_adapter: AsyncTreeAdapter,
+                 enable_oom_protection: bool = True,
                  max_memory_mb: int = 100,
                  max_depth: int = 100,
                  max_entries: int = 10000,
@@ -263,30 +264,48 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                  max_tracked_nodes: int = 10000,
                  validation_ttl_seconds: float = 5.0):
         """
-        Initialize the cache adapter with memory management limits.
+        Initialize the cache adapter with optional memory management limits.
         
         Args:
             base_adapter: The underlying adapter to wrap
-            max_memory_mb: Maximum cache size in megabytes
+            enable_oom_protection: Enable OOM protection features (default True).
+                                  When False, disables all safety checks for maximum performance.
+            max_memory_mb: Maximum cache size in megabytes (when protection enabled)
             max_depth: Maximum allowed scan depth (for CacheEntry.MAX_DEPTH)
-            max_entries: Maximum number of cache entries (primary OOM defense)
-            max_cache_depth: Maximum depth to cache (don't cache deeper)
-            max_path_depth: Maximum path components to cache
-            max_tracked_nodes: Maximum nodes to track in node_completeness
+            max_entries: Maximum number of cache entries (when protection enabled)
+            max_cache_depth: Maximum depth to cache (when protection enabled)
+            max_path_depth: Maximum path components to cache (when protection enabled)
+            max_tracked_nodes: Maximum nodes to track in node_completeness (when protection enabled)
             validation_ttl_seconds: Time to trust cached mtime without revalidation
                                    (0=always validate, -1=never validate)
         """
         super().__init__()  # Initialize parent classes (CacheKeyMixin, AsyncTreeAdapter)
         self.base_adapter = base_adapter
-        self.cache: OrderedDict[Tuple, CacheEntry] = OrderedDict()
-        self.max_memory = max_memory_mb * 1024 * 1024
-        self.current_memory = 0
+        self.enable_oom_protection = enable_oom_protection
         
-        # New memory management limits
-        self.max_entries = max_entries
-        self.max_cache_depth = max_cache_depth
-        self.max_path_depth = max_path_depth
-        self.max_tracked_nodes = max_tracked_nodes
+        # Choose data structures based on protection mode
+        if enable_oom_protection:
+            # Safe mode: Use OrderedDict for LRU eviction
+            self.cache: OrderedDict[Tuple, CacheEntry] = OrderedDict()
+            self.node_completeness = OrderedDict()  # Path → depth mapping
+            # Set all limits
+            self.max_memory = max_memory_mb * 1024 * 1024
+            self.max_entries = max_entries
+            self.max_cache_depth = max_cache_depth
+            self.max_path_depth = max_path_depth
+            self.max_tracked_nodes = max_tracked_nodes
+        else:
+            # Fast mode: Use regular dict for maximum performance
+            self.cache: dict[Tuple, CacheEntry] = {}
+            self.node_completeness = {}  # Path → depth mapping
+            # Disable all limits
+            self.max_memory = float('inf')
+            self.max_entries = 0  # 0 means no limit in our checks
+            self.max_cache_depth = 0
+            self.max_path_depth = 0
+            self.max_tracked_nodes = 0
+        
+        self.current_memory = 0
         self.validation_ttl_seconds = validation_ttl_seconds
         
         # Configure maximum depth
@@ -297,11 +316,21 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self.misses = 0
         self.upgrades = 0
         
-        # Node tracking - separate from cache, tracks ALL visited nodes
-        # Convert to OrderedDict for bounded LRU tracking
-        self.node_completeness = OrderedDict()  # Path → depth mapping
+        # Node tracking configuration
         self.track_nodes = True  # Can be disabled to save memory
         self._depth_context = None  # Depth context for operations
+        
+        # Assign methods based on protection mode
+        if enable_oom_protection:
+            # Safe mode: Use methods with all safety checks
+            self._should_cache_impl = self._should_cache_safe
+            self._track_node_visit_impl = self._track_node_visit_safe
+            self._add_to_cache_impl = self._add_to_cache_safe
+        else:
+            # Fast mode: Use optimized methods with no checks
+            self._should_cache_impl = lambda *args, **kwargs: True
+            self._track_node_visit_impl = lambda *args, **kwargs: None
+            self._add_to_cache_impl = self._add_to_cache_fast
     
     async def get_children(self, node: Any) -> AsyncIterator[Any]:
         """
@@ -320,7 +349,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         
         # Track this node being visited if enabled (bounded)
         if self.track_nodes:
-            self._track_node_visit(str(path), depth)
+            self._track_node_visit_impl(str(path), depth)
         
         # Check if we have this in cache
         if cache_key in self.cache:
@@ -348,7 +377,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                                 # Fresh cache hit - mtime validated
                                 self.hits += 1
                                 entry.access_count += 1
-                                self.cache.move_to_end(cache_key)
+                                if self.enable_oom_protection:
+                                    self.cache.move_to_end(cache_key)
                                 
                                 # Yield cached children
                                 if isinstance(entry.data, list):
@@ -359,7 +389,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                             # Can't get current mtime, use cache optimistically
                             self.hits += 1
                             entry.access_count += 1
-                            self.cache.move_to_end(cache_key)
+                            if self.enable_oom_protection:
+                                self.cache.move_to_end(cache_key)
                             
                             if isinstance(entry.data, list):
                                 for child in entry.data:
@@ -369,7 +400,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                         # Error getting metadata, use cache optimistically
                         self.hits += 1
                         entry.access_count += 1
-                        self.cache.move_to_end(cache_key)
+                        if self.enable_oom_protection:
+                            self.cache.move_to_end(cache_key)
                         
                         if isinstance(entry.data, list):
                             for child in entry.data:
@@ -379,7 +411,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                     # TTL says skip validation, use cache directly
                     self.hits += 1
                     entry.access_count += 1
-                    self.cache.move_to_end(cache_key)
+                    if self.enable_oom_protection:
+                        self.cache.move_to_end(cache_key)
                     
                     if isinstance(entry.data, list):
                         for child in entry.data:
@@ -389,7 +422,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                 # No mtime validation possible, use cache as-is
                 self.hits += 1
                 entry.access_count += 1
-                self.cache.move_to_end(cache_key)
+                if self.enable_oom_protection:
+                    self.cache.move_to_end(cache_key)
                 
                 # Yield cached children
                 if isinstance(entry.data, list):
@@ -418,7 +452,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                     if is_fresh:
                         self.hits += 1
                         entry.access_count += 1
-                        self.cache.move_to_end(existing_key)
+                        if self.enable_oom_protection:
+                            self.cache.move_to_end(existing_key)
                         # Yield cached children
                         if isinstance(entry.data, list):
                             for child in entry.data:
@@ -432,7 +467,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             children.append(child)
             # Track child nodes if enabled (bounded)
             if self.track_nodes and hasattr(child, 'path'):
-                self._track_node_visit(str(child.path), 0)  # Depth 0 for unvisited child
+                self._track_node_visit_impl(str(child.path), 0)  # Depth 0 for unvisited child
             yield child
         
         # Get mtime if available for cache invalidation
@@ -445,7 +480,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                 pass  # No mtime available
         
         # Cache the result with mtime
-        self._add_to_cache(cache_key, children, depth, mtime)
+        self._add_to_cache_impl(cache_key, children, depth, mtime)
     
     async def get_parent(self, node: Any) -> Optional[Any]:
         """Pass through to base adapter."""
@@ -488,7 +523,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                 self.hits += 1
                 entry.access_count += 1
                 # Move to end for LRU
-                self.cache.move_to_end(cache_key)
+                if self.enable_oom_protection:
+                    self.cache.move_to_end(cache_key)
                 return entry.data, True
         
         # Check if a deeper scan exists that satisfies this request
@@ -503,7 +539,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         result = await self._scan_path(path, depth)
         
         # Store in cache
-        self._add_to_cache(cache_key, result, depth)
+        self._add_to_cache_impl(cache_key, result, depth)
         
         return result, False
     
@@ -522,9 +558,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         # For now, just a placeholder
         return {"path": str(path), "depth": depth, "data": []}
     
-    def _should_cache(self, path: Path, depth: int) -> bool:
+    def _should_cache_safe(self, path: Path, depth: int) -> bool:
         """
-        Determine if an entry should be cached based on limits.
+        Determine if an entry should be cached based on limits (safe mode).
         
         Args:
             path: Path to check
@@ -551,9 +587,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         
         return True
     
-    def _track_node_visit(self, path_str: str, depth: int):
+    def _track_node_visit_safe(self, path_str: str, depth: int):
         """
-        Track a node visit with bounded LRU eviction.
+        Track a node visit with bounded LRU eviction (safe mode).
         
         Args:
             path_str: String representation of path
@@ -563,11 +599,13 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             # Update existing entry and move to end (most recent)
             existing_depth = self.node_completeness[path_str]
             self.node_completeness[path_str] = max(existing_depth, depth)
+            # We know this is safe mode, so we have OrderedDict
             self.node_completeness.move_to_end(path_str)
         else:
             # Add new entry, evicting oldest if at limit
             if len(self.node_completeness) >= self.max_tracked_nodes:
                 # Remove oldest (first) entry
+                # We know this is safe mode, so we have OrderedDict
                 self.node_completeness.popitem(last=False)
             self.node_completeness[path_str] = depth
     
@@ -597,9 +635,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         # Validate if TTL has expired
         return (time.time() - entry.cached_at) > self.validation_ttl_seconds
     
-    def _add_to_cache(self, key: Tuple, data: Any, depth: int, mtime: Optional[float] = None):
+    def _add_to_cache_safe(self, key: Tuple, data: Any, depth: int, mtime: Optional[float] = None):
         """
-        Add entry to cache with memory management.
+        Add entry to cache with memory management (safe mode).
         
         Args:
             key: Cache key
@@ -612,7 +650,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         path = Path(key[3]) if len(key) > 3 else Path("/")
         
         # Check if we should cache this entry
-        if not self._should_cache(path, depth):
+        if not self._should_cache_safe(path, depth):
             return  # Don't cache
         
         entry = CacheEntry(data, depth, mtime)
@@ -633,6 +671,20 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         
         self.cache[key] = entry
         self.current_memory += entry.size_estimate
+    
+    def _add_to_cache_fast(self, key: Tuple, data: Any, depth: int, mtime: Optional[float] = None):
+        """
+        Add entry to cache without any safety checks (fast mode).
+        
+        Args:
+            key: Cache key
+            data: Data to cache
+            depth: Scan depth
+            mtime: Modification time for cache invalidation
+        """
+        entry = CacheEntry(data, depth, mtime)
+        entry.cached_at = time.time()
+        self.cache[key] = entry  # Just a dict assignment!
     
     def _estimate_entry_size(self, key: Tuple, data: Any) -> int:
         """
