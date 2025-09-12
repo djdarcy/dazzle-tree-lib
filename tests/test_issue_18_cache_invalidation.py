@@ -47,7 +47,10 @@ class TestCacheInvalidation:
         base_adapter.get_children = mock_get_children
         
         # Create cache adapter
-        cache_adapter = CompletenessAwareCacheAdapter(base_adapter)
+        cache_adapter = CompletenessAwareCacheAdapter(
+            base_adapter,
+            validation_ttl_seconds=0  # Always validate mtime for tests
+        )
         
         # Get children (should cache with mtime)
         children = []
@@ -98,7 +101,10 @@ class TestCacheInvalidation:
         base_adapter.get_children = mock_get_children
         
         # Create cache adapter
-        cache_adapter = CompletenessAwareCacheAdapter(base_adapter)
+        cache_adapter = CompletenessAwareCacheAdapter(
+            base_adapter,
+            validation_ttl_seconds=0  # Always validate mtime for tests
+        )
         
         # First call - should cache
         children1 = []
@@ -151,7 +157,10 @@ class TestCacheInvalidation:
         base_adapter.get_children = mock_get_children
         
         # Create cache adapter
-        cache_adapter = CompletenessAwareCacheAdapter(base_adapter)
+        cache_adapter = CompletenessAwareCacheAdapter(
+            base_adapter,
+            validation_ttl_seconds=0  # Always validate mtime for tests
+        )
         
         # First call - should cache
         children1 = []
@@ -192,7 +201,10 @@ class TestCacheInvalidation:
         base_adapter.get_children = mock_get_children
         
         # Create cache adapter
-        cache_adapter = CompletenessAwareCacheAdapter(base_adapter)
+        cache_adapter = CompletenessAwareCacheAdapter(
+            base_adapter,
+            validation_ttl_seconds=0  # Always validate mtime for tests
+        )
         
         # First call - should cache without mtime
         children1 = []
@@ -244,7 +256,10 @@ class TestCacheInvalidation:
         base_adapter.get_children = mock_get_children
         
         # Create cache adapter
-        cache_adapter = CompletenessAwareCacheAdapter(base_adapter)
+        cache_adapter = CompletenessAwareCacheAdapter(
+            base_adapter,
+            validation_ttl_seconds=0  # Always validate mtime for tests
+        )
         
         # Cache with depth 5
         cache_adapter.set_depth_context(5)

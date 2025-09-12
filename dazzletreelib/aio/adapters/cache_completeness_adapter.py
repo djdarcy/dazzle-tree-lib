@@ -256,20 +256,38 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
     
     def __init__(self, base_adapter: AsyncTreeAdapter, 
                  max_memory_mb: int = 100,
-                 max_depth: int = 100):
+                 max_depth: int = 100,
+                 max_entries: int = 10000,
+                 max_cache_depth: int = 50,
+                 max_path_depth: int = 30,
+                 max_tracked_nodes: int = 10000,
+                 validation_ttl_seconds: float = 5.0):
         """
-        Initialize the cache adapter.
+        Initialize the cache adapter with memory management limits.
         
         Args:
             base_adapter: The underlying adapter to wrap
             max_memory_mb: Maximum cache size in megabytes
-            max_depth: Maximum allowed scan depth
+            max_depth: Maximum allowed scan depth (for CacheEntry.MAX_DEPTH)
+            max_entries: Maximum number of cache entries (primary OOM defense)
+            max_cache_depth: Maximum depth to cache (don't cache deeper)
+            max_path_depth: Maximum path components to cache
+            max_tracked_nodes: Maximum nodes to track in node_completeness
+            validation_ttl_seconds: Time to trust cached mtime without revalidation
+                                   (0=always validate, -1=never validate)
         """
         super().__init__()  # Initialize parent classes (CacheKeyMixin, AsyncTreeAdapter)
         self.base_adapter = base_adapter
         self.cache: OrderedDict[Tuple, CacheEntry] = OrderedDict()
         self.max_memory = max_memory_mb * 1024 * 1024
         self.current_memory = 0
+        
+        # New memory management limits
+        self.max_entries = max_entries
+        self.max_cache_depth = max_cache_depth
+        self.max_path_depth = max_path_depth
+        self.max_tracked_nodes = max_tracked_nodes
+        self.validation_ttl_seconds = validation_ttl_seconds
         
         # Configure maximum depth
         CacheEntry.MAX_DEPTH = max_depth
@@ -280,7 +298,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self.upgrades = 0
         
         # Node tracking - separate from cache, tracks ALL visited nodes
-        self.node_completeness = {}  # Path → depth mapping
+        # Convert to OrderedDict for bounded LRU tracking
+        self.node_completeness = OrderedDict()  # Path → depth mapping
         self.track_nodes = True  # Can be disabled to save memory
         self._depth_context = None  # Depth context for operations
     
@@ -299,43 +318,55 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         depth = self._depth_context if self._depth_context is not None else 1
         cache_key = self._get_cache_key(path, depth)
         
-        # Track this node being visited if enabled
+        # Track this node being visited if enabled (bounded)
         if self.track_nodes:
-            path_str = str(path)
-            existing_depth = self.node_completeness.get(path_str, 0)
-            self.node_completeness[path_str] = max(existing_depth, depth)
+            self._track_node_visit(str(path), depth)
         
         # Check if we have this in cache
         if cache_key in self.cache:
             entry = self.cache[cache_key]
             
             # Validate cache entry freshness if mtime is available
+            # Note: We check mtime first (if available), then TTL as a secondary optimization
             if entry.mtime is not None and hasattr(node, 'metadata'):
-                try:
-                    # Get current mtime from node metadata
-                    metadata = await node.metadata()
-                    current_mtime = metadata.get('modified_time')
-                    
-                    if current_mtime is not None:
-                        # Check if file has been modified (with tolerance for float comparison)
-                        if abs(entry.mtime - current_mtime) > 0.001:
-                            # Stale entry - invalidate and continue to fetch fresh
-                            del self.cache[cache_key]
-                            self.current_memory -= entry.size_estimate
-                            # Fall through to fetch fresh data
+                # Only do the expensive metadata call if TTL says we should (or if no TTL set)
+                should_check_mtime = self._should_validate_mtime(entry)
+                if should_check_mtime:
+                    try:
+                        # Get current mtime from node metadata
+                        metadata = await node.metadata()
+                        current_mtime = metadata.get('modified_time')
+                        
+                        if current_mtime is not None:
+                            # Check if file has been modified (with tolerance for float comparison)
+                            if abs(entry.mtime - current_mtime) > 0.001:
+                                # Stale entry - invalidate and continue to fetch fresh
+                                del self.cache[cache_key]
+                                self.current_memory -= entry.size_estimate
+                                # Fall through to fetch fresh data
+                            else:
+                                # Fresh cache hit - mtime validated
+                                self.hits += 1
+                                entry.access_count += 1
+                                self.cache.move_to_end(cache_key)
+                                
+                                # Yield cached children
+                                if isinstance(entry.data, list):
+                                    for child in entry.data:
+                                        yield child
+                                return
                         else:
-                            # Fresh cache hit
+                            # Can't get current mtime, use cache optimistically
                             self.hits += 1
                             entry.access_count += 1
                             self.cache.move_to_end(cache_key)
                             
-                            # Yield cached children
                             if isinstance(entry.data, list):
                                 for child in entry.data:
                                     yield child
                             return
-                    else:
-                        # Can't get current mtime, use cache optimistically
+                    except Exception:
+                        # Error getting metadata, use cache optimistically
                         self.hits += 1
                         entry.access_count += 1
                         self.cache.move_to_end(cache_key)
@@ -344,8 +375,8 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                             for child in entry.data:
                                 yield child
                         return
-                except Exception:
-                    # Error getting metadata, use cache optimistically
+                else:
+                    # TTL says skip validation, use cache directly
                     self.hits += 1
                     entry.access_count += 1
                     self.cache.move_to_end(cache_key)
@@ -399,11 +430,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         children = []
         async for child in self.base_adapter.get_children(node):
             children.append(child)
-            # Track child nodes if enabled
+            # Track child nodes if enabled (bounded)
             if self.track_nodes and hasattr(child, 'path'):
-                child_path_str = str(child.path)
-                if child_path_str not in self.node_completeness:
-                    self.node_completeness[child_path_str] = 0  # Will be updated when visited
+                self._track_node_visit(str(child.path), 0)  # Depth 0 for unvisited child
             yield child
         
         # Get mtime if available for cache invalidation
@@ -493,6 +522,81 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         # For now, just a placeholder
         return {"path": str(path), "depth": depth, "data": []}
     
+    def _should_cache(self, path: Path, depth: int) -> bool:
+        """
+        Determine if an entry should be cached based on limits.
+        
+        Args:
+            path: Path to check
+            depth: Depth of the scan
+            
+        Returns:
+            True if entry should be cached
+        """
+        # Check if caching is disabled (max_entries == 0)
+        if self.max_entries == 0:
+            return False
+        
+        # Check entry count limit (primary defense)
+        if self.max_entries > 0 and len(self.cache) >= self.max_entries:
+            return False
+        
+        # Check depth limit
+        if self.max_cache_depth > 0 and depth > self.max_cache_depth:
+            return False
+        
+        # Check path component limit
+        if self.max_path_depth > 0 and len(path.parts) > self.max_path_depth:
+            return False
+        
+        return True
+    
+    def _track_node_visit(self, path_str: str, depth: int):
+        """
+        Track a node visit with bounded LRU eviction.
+        
+        Args:
+            path_str: String representation of path
+            depth: Depth of the visit
+        """
+        if path_str in self.node_completeness:
+            # Update existing entry and move to end (most recent)
+            existing_depth = self.node_completeness[path_str]
+            self.node_completeness[path_str] = max(existing_depth, depth)
+            self.node_completeness.move_to_end(path_str)
+        else:
+            # Add new entry, evicting oldest if at limit
+            if len(self.node_completeness) >= self.max_tracked_nodes:
+                # Remove oldest (first) entry
+                self.node_completeness.popitem(last=False)
+            self.node_completeness[path_str] = depth
+    
+    def _should_validate_mtime(self, entry: 'CacheEntry') -> bool:
+        """
+        Determine if mtime validation should be performed.
+        
+        Args:
+            entry: Cache entry to check
+            
+        Returns:
+            True if mtime should be validated
+        """
+        # Never validate if TTL is negative
+        if self.validation_ttl_seconds < 0:
+            return False
+        
+        # Always validate if TTL is 0
+        if self.validation_ttl_seconds == 0:
+            return True
+        
+        # Check if entry has cached_at timestamp
+        if not hasattr(entry, 'cached_at'):
+            entry.cached_at = time.time()
+            return True
+        
+        # Validate if TTL has expired
+        return (time.time() - entry.cached_at) > self.validation_ttl_seconds
+    
     def _add_to_cache(self, key: Tuple, data: Any, depth: int, mtime: Optional[float] = None):
         """
         Add entry to cache with memory management.
@@ -503,17 +607,70 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             depth: Scan depth
             mtime: Modification time for cache invalidation
         """
+        # Extract path from key for checking limits
+        # Key format: (class_id, instance_num, key_type, path, depth)
+        path = Path(key[3]) if len(key) > 3 else Path("/")
+        
+        # Check if we should cache this entry
+        if not self._should_cache(path, depth):
+            return  # Don't cache
+        
         entry = CacheEntry(data, depth, mtime)
         
-        # Estimate memory usage (simplified)
-        entry.size_estimate = len(str(data)) * 2  # Rough estimate
+        # Add timestamp for TTL validation
+        entry.cached_at = time.time()
         
-        # Evict if necessary
+        # Improved memory estimation
+        entry.size_estimate = self._estimate_entry_size(key, data)
+        
+        # Enforce max_entries limit (primary defense)
+        while self.max_entries > 0 and len(self.cache) >= self.max_entries and self.cache:
+            self._evict_lru()
+        
+        # Evict if necessary for memory limit
         while self.current_memory + entry.size_estimate > self.max_memory and self.cache:
             self._evict_lru()
         
         self.cache[key] = entry
         self.current_memory += entry.size_estimate
+    
+    def _estimate_entry_size(self, key: Tuple, data: Any) -> int:
+        """
+        Estimate memory usage of a cache entry.
+        
+        Args:
+            key: Cache key tuple
+            data: Cached data
+            
+        Returns:
+            Estimated size in bytes
+        """
+        # Python object overhead estimates (64-bit)
+        OBJECT_OVERHEAD = 56  # Base object overhead
+        DICT_ENTRY_OVERHEAD = 200  # OrderedDict entry overhead
+        
+        # Key size (5-tuple with path string)
+        key_size = OBJECT_OVERHEAD + 5 * 8  # Tuple with 5 pointers
+        if len(key) > 3:
+            key_size += len(str(key[3])) * 2  # Path string
+        
+        # Data size estimation
+        data_size = OBJECT_OVERHEAD
+        if isinstance(data, list):
+            # List of children
+            data_size += len(data) * 8  # Pointers to items
+            # Sample first 10 items for size estimation
+            sample_size = 0
+            for item in data[:10]:
+                sample_size += OBJECT_OVERHEAD + len(str(item)) * 2
+            if data:
+                avg_item_size = sample_size / min(len(data), 10)
+                data_size += int(avg_item_size * len(data))
+        else:
+            # Fallback for other types
+            data_size += len(str(data)) * 2
+        
+        return DICT_ENTRY_OVERHEAD + key_size + data_size
     
     def _evict_lru(self):
         """Evict least recently used cache entry."""
