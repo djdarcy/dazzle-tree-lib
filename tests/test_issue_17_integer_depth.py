@@ -264,6 +264,36 @@ class TestMigrationFromEnum:
         complete_entry = CacheEntry([], depth=CacheEntry.COMPLETE_DEPTH)
         assert complete_entry.depth == -1
     
+    def test_is_partial_and_is_complete_helpers(self):
+        """Test the is_partial() and is_complete() helper methods."""
+        # Test partial scans
+        partial_shallow = CacheEntry([], depth=1)
+        assert partial_shallow.is_partial() is True
+        assert partial_shallow.is_complete() is False
+        
+        partial_deep = CacheEntry([], depth=10)
+        assert partial_deep.is_partial() is True
+        assert partial_deep.is_complete() is False
+        
+        partial_zero = CacheEntry([], depth=0)
+        assert partial_zero.is_partial() is True
+        assert partial_zero.is_complete() is False
+        
+        # Test complete scan
+        complete = CacheEntry([], depth=CacheEntry.COMPLETE_DEPTH)
+        assert complete.is_partial() is False
+        assert complete.is_complete() is True
+        
+        # Test that depth=-1 is recognized as complete
+        complete_explicit = CacheEntry([], depth=-1)
+        assert complete_explicit.is_partial() is False
+        assert complete_explicit.is_complete() is True
+        
+        # Verify semantic meaning: partial means more may exist
+        # Complete means everything is cached
+        assert partial_shallow.is_partial(), "Shallow scan should indicate more levels may exist"
+        assert complete.is_complete(), "Complete scan should indicate everything is cached"
+    
     def test_can_import_cache_entry(self):
         """Verify CacheEntry can be imported."""
         from dazzletreelib.aio.adapters import CacheEntry as ImportedEntry

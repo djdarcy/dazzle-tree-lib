@@ -128,7 +128,24 @@ CacheCompleteness.COMPLETE = 999
 
 
 class CacheEntry:
-    """Entry in the completeness-aware cache with integer depth tracking."""
+    """Entry in the completeness-aware cache with integer depth tracking.
+    
+    Depth Semantics:
+    ---------------
+    - depth == -1 (COMPLETE_DEPTH): Complete scan - ALL levels cached, nothing more exists
+    - depth >= 0: Partial scan - cached to this depth, more levels may exist below
+    
+    Examples:
+    ---------
+    - depth=1: Cached immediate children only (shallow scan)
+    - depth=3: Cached 3 levels deep, but more levels may exist beyond
+    - depth=-1: Cached entire tree structure, no unexplored nodes remain
+    
+    The distinction between "partial" and "complete" is critical for cache reuse:
+    - A complete scan (depth=-1) can satisfy ANY depth request
+    - A partial scan (depth=N) can only satisfy requests for depth <= N
+    - Partial scans indicate potential for deeper exploration
+    """
     
     # Constants for depth representation
     COMPLETE_DEPTH = -1  # Sentinel value for complete/infinite scan
@@ -177,6 +194,40 @@ class CacheEntry:
         
         # Partial scan satisfies if deep enough
         return self.depth >= required_depth
+    
+    def is_partial(self) -> bool:
+        """
+        Check if this is a partial scan (more levels may exist below).
+        
+        Returns:
+            True if this is a partial scan (depth >= 0), False if complete
+            
+        Example:
+            >>> entry = CacheEntry(data=[], depth=3)
+            >>> entry.is_partial()
+            True
+            >>> complete_entry = CacheEntry(data=[], depth=CacheEntry.COMPLETE_DEPTH)
+            >>> complete_entry.is_partial()
+            False
+        """
+        return self.depth != self.COMPLETE_DEPTH
+    
+    def is_complete(self) -> bool:
+        """
+        Check if this is a complete scan (entire tree cached).
+        
+        Returns:
+            True if this is a complete scan (depth == -1), False if partial
+            
+        Example:
+            >>> entry = CacheEntry(data=[], depth=3)
+            >>> entry.is_complete()
+            False
+            >>> complete_entry = CacheEntry(data=[], depth=CacheEntry.COMPLETE_DEPTH)
+            >>> complete_entry.is_complete()
+            True
+        """
+        return self.depth == self.COMPLETE_DEPTH
     
     @classmethod
     def set_max_depth(cls, max_depth: int):
