@@ -308,29 +308,91 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         # Check if we have this in cache
         if cache_key in self.cache:
             entry = self.cache[cache_key]
-            self.hits += 1
-            entry.access_count += 1
-            # Move to end for LRU
-            self.cache.move_to_end(cache_key)
             
-            # Yield cached children
-            if isinstance(entry.data, list):
-                for child in entry.data:
-                    yield child
-            return
+            # Validate cache entry freshness if mtime is available
+            if entry.mtime is not None and hasattr(node, 'metadata'):
+                try:
+                    # Get current mtime from node metadata
+                    metadata = await node.metadata()
+                    current_mtime = metadata.get('modified_time')
+                    
+                    if current_mtime is not None:
+                        # Check if file has been modified (with tolerance for float comparison)
+                        if abs(entry.mtime - current_mtime) > 0.001:
+                            # Stale entry - invalidate and continue to fetch fresh
+                            del self.cache[cache_key]
+                            self.current_memory -= entry.size_estimate
+                            # Fall through to fetch fresh data
+                        else:
+                            # Fresh cache hit
+                            self.hits += 1
+                            entry.access_count += 1
+                            self.cache.move_to_end(cache_key)
+                            
+                            # Yield cached children
+                            if isinstance(entry.data, list):
+                                for child in entry.data:
+                                    yield child
+                            return
+                    else:
+                        # Can't get current mtime, use cache optimistically
+                        self.hits += 1
+                        entry.access_count += 1
+                        self.cache.move_to_end(cache_key)
+                        
+                        if isinstance(entry.data, list):
+                            for child in entry.data:
+                                yield child
+                        return
+                except Exception:
+                    # Error getting metadata, use cache optimistically
+                    self.hits += 1
+                    entry.access_count += 1
+                    self.cache.move_to_end(cache_key)
+                    
+                    if isinstance(entry.data, list):
+                        for child in entry.data:
+                            yield child
+                    return
+            else:
+                # No mtime validation possible, use cache as-is
+                self.hits += 1
+                entry.access_count += 1
+                self.cache.move_to_end(cache_key)
+                
+                # Yield cached children
+                if isinstance(entry.data, list):
+                    for child in entry.data:
+                        yield child
+                return
         
         # Check if we have a deeper scan that satisfies this request
         for existing_key, entry in self.cache.items():
             if self._same_path(existing_key, cache_key):
                 if entry.satisfies(depth):
-                    self.hits += 1
-                    entry.access_count += 1
-                    self.cache.move_to_end(existing_key)
-                    # Yield cached children
-                    if isinstance(entry.data, list):
-                        for child in entry.data:
-                            yield child
-                    return
+                    # Validate freshness if mtime is available
+                    is_fresh = True
+                    if entry.mtime is not None and hasattr(node, 'metadata'):
+                        try:
+                            metadata = await node.metadata()
+                            current_mtime = metadata.get('modified_time')
+                            if current_mtime is not None and abs(entry.mtime - current_mtime) > 0.001:
+                                # Stale entry - invalidate
+                                del self.cache[existing_key]
+                                self.current_memory -= entry.size_estimate
+                                is_fresh = False
+                        except Exception:
+                            pass  # Can't validate, assume fresh
+                    
+                    if is_fresh:
+                        self.hits += 1
+                        entry.access_count += 1
+                        self.cache.move_to_end(existing_key)
+                        # Yield cached children
+                        if isinstance(entry.data, list):
+                            for child in entry.data:
+                                yield child
+                        return
         
         # Not in cache - get from base adapter and cache the result
         self.misses += 1
@@ -344,8 +406,17 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                     self.node_completeness[child_path_str] = 0  # Will be updated when visited
             yield child
         
-        # Cache the result
-        self._add_to_cache(cache_key, children, depth)
+        # Get mtime if available for cache invalidation
+        mtime = None
+        if hasattr(node, 'metadata'):
+            try:
+                metadata = await node.metadata()
+                mtime = metadata.get('modified_time')
+            except Exception:
+                pass  # No mtime available
+        
+        # Cache the result with mtime
+        self._add_to_cache(cache_key, children, depth, mtime)
     
     async def get_parent(self, node: Any) -> Optional[Any]:
         """Pass through to base adapter."""
@@ -422,7 +493,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         # For now, just a placeholder
         return {"path": str(path), "depth": depth, "data": []}
     
-    def _add_to_cache(self, key: Tuple, data: Any, depth: int):
+    def _add_to_cache(self, key: Tuple, data: Any, depth: int, mtime: Optional[float] = None):
         """
         Add entry to cache with memory management.
         
@@ -430,8 +501,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             key: Cache key
             data: Data to cache
             depth: Scan depth
+            mtime: Modification time for cache invalidation
         """
-        entry = CacheEntry(data, depth)
+        entry = CacheEntry(data, depth, mtime)
         
         # Estimate memory usage (simplified)
         entry.size_estimate = len(str(data)) * 2  # Rough estimate
