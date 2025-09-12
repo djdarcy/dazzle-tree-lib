@@ -12,7 +12,6 @@ from .filesystem import (
 from .timestamp_adapter import TimestampCalculationAdapter
 from .cache_completeness_adapter import (
     CacheEntry,
-    CacheCompleteness,
     CompletenessAwareCacheAdapter,
 )
 from .depth_tracking_adapter import DepthTrackingAdapter
@@ -23,7 +22,6 @@ __all__ = [
     'AsyncFilteredFileSystemAdapter',
     'TimestampCalculationAdapter',
     'CacheEntry',
-    'CacheCompleteness',
     'CompletenessAwareCacheAdapter',
     'DepthTrackingAdapter',
 ]

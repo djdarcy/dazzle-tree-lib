@@ -12,7 +12,6 @@ import pytest
 
 from dazzletreelib.aio.adapters.cache_completeness_adapter import (
     CompletenessAwareCacheAdapter as CacheCompletenessAdapter,
-    CacheCompleteness,
     CacheEntry
 )
 from dazzletreelib.aio.caching.adapter import CachingTreeAdapter

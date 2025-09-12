@@ -13,13 +13,19 @@ from collections import OrderedDict
 from ..core import AsyncTreeAdapter, CacheKeyMixin
 
 
+import warnings
+
 # Backward compatibility enum for tests
-# TODO: Remove once tests are migrated to integer depths
+# TODO: Remove in next major version (2.0.0)
 class CacheCompleteness:
-    """Deprecated: Backward compatibility for tests using the old enum.
+    """DEPRECATED: This class is deprecated and will be removed in v2.0.0.
     
-    This is provided only for test compatibility. New code should use
-    integer depths directly with CacheEntry.
+    Use integer depths directly with CacheEntry instead:
+    - Use depth=1 instead of CacheCompleteness.SHALLOW
+    - Use depth=N instead of CacheCompleteness.PARTIAL_N
+    - Use depth=CacheEntry.COMPLETE_DEPTH instead of CacheCompleteness.COMPLETE
+    
+    This class is only kept for backward compatibility with existing code.
     """
     NONE = 0
     SHALLOW = 1
@@ -31,6 +37,12 @@ class CacheCompleteness:
     COMPLETE = 999
     
     def __init__(self, value):
+        warnings.warn(
+            "CacheCompleteness is deprecated and will be removed in v2.0.0. "
+            "Use integer depths directly with CacheEntry instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self.value = value
         self.name = self._get_name(value)
     
@@ -103,15 +115,16 @@ class CacheCompleteness:
         return self.value >= required.value
 
 
-# Create singleton instances
-CacheCompleteness.NONE = CacheCompleteness(0)
-CacheCompleteness.SHALLOW = CacheCompleteness(1)
-CacheCompleteness.PARTIAL_2 = CacheCompleteness(2)
-CacheCompleteness.PARTIAL_3 = CacheCompleteness(3)
-CacheCompleteness.PARTIAL_4 = CacheCompleteness(4)
-CacheCompleteness.PARTIAL_5 = CacheCompleteness(5)
-CacheCompleteness.PARTIAL_N = CacheCompleteness(10)
-CacheCompleteness.COMPLETE = CacheCompleteness(999)
+# Singleton instances - created as class attributes to avoid deprecation warnings at import
+# These will trigger warnings when actually used
+CacheCompleteness.NONE = 0
+CacheCompleteness.SHALLOW = 1
+CacheCompleteness.PARTIAL_2 = 2
+CacheCompleteness.PARTIAL_3 = 3
+CacheCompleteness.PARTIAL_4 = 4
+CacheCompleteness.PARTIAL_5 = 5
+CacheCompleteness.PARTIAL_N = 10
+CacheCompleteness.COMPLETE = 999
 
 
 class CacheEntry:

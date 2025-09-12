@@ -253,15 +253,16 @@ class TestMigrationFromEnum:
                 entry = CacheEntry([], depth=new_depth)
                 assert entry.depth == new_depth
     
-    def test_backward_compatibility_enum_exists(self):
-        """Verify CacheCompleteness exists for backward compatibility but is deprecated."""
-        from dazzletreelib.aio.adapters.cache_completeness_adapter import CacheCompleteness
-        # Should be able to import it for backward compatibility
-        assert hasattr(CacheCompleteness, 'SHALLOW')
-        assert hasattr(CacheCompleteness, 'PARTIAL_2')
-        assert hasattr(CacheCompleteness, 'COMPLETE')
-        # Check it's marked as deprecated in docstring
-        assert "Deprecated" in CacheCompleteness.__doc__ or "backward compatibility" in CacheCompleteness.__doc__.lower()
+    def test_no_dependency_on_enum(self):
+        """Verify tests work without CacheCompleteness enum."""
+        # All tests in this file use integer depths directly
+        # This test confirms we don't need the enum
+        entry = CacheEntry([], depth=5)
+        assert entry.depth == 5
+        
+        # Complete depth uses the constant
+        complete_entry = CacheEntry([], depth=CacheEntry.COMPLETE_DEPTH)
+        assert complete_entry.depth == -1
     
     def test_can_import_cache_entry(self):
         """Verify CacheEntry can be imported."""

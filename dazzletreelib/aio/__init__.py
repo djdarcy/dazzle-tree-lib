@@ -24,7 +24,6 @@ from .adapters import (
     TimestampCalculationAdapter,
     CompletenessAwareCacheAdapter,
     CacheEntry,
-    CacheCompleteness,
     DepthTrackingAdapter,
 )
 
@@ -91,7 +90,6 @@ __all__ = [
     'TimestampCalculationAdapter',
     'CompletenessAwareCacheAdapter',
     'CacheEntry',
-    'CacheCompleteness',
     'DepthTrackingAdapter',
     # Error handling
     'ErrorPolicy',

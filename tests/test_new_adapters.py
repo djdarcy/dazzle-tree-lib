@@ -19,7 +19,7 @@ from dazzletreelib.aio import (
     AsyncFileSystemAdapter,
     TimestampCalculationAdapter,
     CompletenessAwareCacheAdapter,
-    CacheCompleteness,
+    CacheEntry,
     traverse_post_order_with_depth,
     traverse_tree_bottom_up,
     collect_by_level_bottom_up,
@@ -113,12 +113,16 @@ async def test_cache_completeness():
         base_adapter = AsyncFileSystemAdapter()
         cache_adapter = CompletenessAwareCacheAdapter(base_adapter, max_memory_mb=1)
         
-        # Test cache completeness levels
-        print("\n1. Testing completeness levels...")
-        assert CacheCompleteness.from_depth(1) == CacheCompleteness.SHALLOW
-        assert CacheCompleteness.from_depth(3) == CacheCompleteness.PARTIAL_3
-        assert CacheCompleteness.from_depth(None) == CacheCompleteness.COMPLETE
-        print("   [PASS] Completeness levels correct")
+        # Test integer depth system
+        print("\n1. Testing integer depth system...")
+        # Verify we can use integer depths directly
+        entry1 = CacheEntry([], depth=1)  # Shallow scan
+        assert entry1.depth == 1
+        entry3 = CacheEntry([], depth=3)  # Depth 3 scan
+        assert entry3.depth == 3
+        entry_complete = CacheEntry([], depth=CacheEntry.COMPLETE_DEPTH)  # Complete scan
+        assert entry_complete.depth == -1
+        print("   [PASS] Integer depth system working")
         
         # Test cache operations
         print("\n2. Testing cache operations...")
