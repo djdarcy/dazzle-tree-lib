@@ -223,7 +223,8 @@ class TestNodeTrackingLimits:
         mock_adapter = MockAdapter()
         adapter = CompletenessAwareCacheAdapter(
             mock_adapter,
-            max_tracked_nodes=3
+            max_tracked_nodes=3,
+            track_child_nodes=True  # This test requires child tracking
         )
         
         # Track nodes in order
