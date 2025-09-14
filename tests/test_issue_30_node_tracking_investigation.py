@@ -1,8 +1,12 @@
 """
-Investigation tests for Issue #30: Understanding node tracking behavior.
+Historical documentation for Issue #30: Proves child tracking is redundant.
 
-This test file documents and analyzes the current node tracking behavior
-to determine if tracking both parents and children is redundant.
+This test file documents the investigation that proved child node tracking
+adds 111x memory overhead for minimal value (depth=0 for all children).
+Kept as historical documentation for why child tracking was removed.
+
+NOTE: These tests are now marked as skipped since the feature was removed.
+They document the behavior that justified the removal.
 """
 
 import pytest
@@ -142,11 +146,12 @@ class TestNodeTrackingBehavior:
         print("="*70)
         
         mock_adapter = InstrumentedMockAdapter(children_per_node=3, max_depth=2)
+        # NOTE: track_child_nodes parameter has been removed
+        # This test documents the behavior before removal
         cache_adapter = InstrumentedCacheAdapter(
             mock_adapter,
             enable_oom_protection=True,
-            max_tracked_nodes=100,
-            track_child_nodes=True  # This test investigates child tracking behavior
+            max_tracked_nodes=100
         )
         
         # Traverse a simple tree
@@ -182,11 +187,11 @@ class TestNodeTrackingBehavior:
             print(f"  ... and {len(analyzer.tracking_log) - 10} more entries")
         
         # Assertions to document behavior
-        # With child tracking enabled, we track everything
-        # The analyzer uses a simple heuristic: anything with "child" in the name is a child
+        # With child tracking REMOVED, we only track nodes we actually visit
+        # We visit root and its 3 immediate children (child_0, child_1, child_2)
         assert summary['parent_tracks'] == 1  # Only root (doesn't have "child" in name)
-        assert summary['child_tracks'] == 12  # Everything with "child" in the path
-        assert summary['tracking_ratio'] == 12.0  # 12x more children than parents
+        assert summary['child_tracks'] == 3  # Only the 3 children we actually visited
+        assert summary['tracking_ratio'] == 3.0  # 3x more children than parents
         
         return summary
     
@@ -516,17 +521,21 @@ class TestTrackingUseCases:
         }
 
 
+@pytest.mark.skip(reason="Child tracking feature removed - kept for historical documentation")
 @pytest.mark.asyncio
 async def test_track_child_nodes_parameter():
-    """Test that track_child_nodes parameter controls child tracking behavior."""
+    """HISTORICAL: Test that documented why child tracking was removed.
+    
+    This test proved that child tracking added 111x memory overhead
+    for minimal value. Kept as documentation."""
     tree = MockNode(Path("/root"))
     
     # Test with child tracking disabled (new default)
     print("\n=== Test with track_child_nodes=False (new default) ===")
     base_adapter = InstrumentedMockAdapter(max_depth=2, children_per_node=3)
+    # NOTE: track_child_nodes parameter removed - child tracking is always off now
     cache_adapter = CompletenessAwareCacheAdapter(
-        base_adapter,
-        track_child_nodes=False  # Explicitly disable child tracking
+        base_adapter
     )
     
     # Traverse tree (2 levels)
@@ -555,9 +564,9 @@ async def test_track_child_nodes_parameter():
     # Test with child tracking enabled (backward compatibility)
     print("\n=== Test with track_child_nodes=True (backward compatibility) ===")
     base_adapter2 = InstrumentedMockAdapter(max_depth=2, children_per_node=3)
+    # NOTE: track_child_nodes parameter removed - cannot enable anymore
     cache_adapter2 = CompletenessAwareCacheAdapter(
-        base_adapter2,
-        track_child_nodes=True  # Enable child tracking for compatibility
+        base_adapter2
     )
     
     # Traverse tree (2 levels)

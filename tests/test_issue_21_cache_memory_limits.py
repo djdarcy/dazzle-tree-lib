@@ -223,8 +223,7 @@ class TestNodeTrackingLimits:
         mock_adapter = MockAdapter()
         adapter = CompletenessAwareCacheAdapter(
             mock_adapter,
-            max_tracked_nodes=3,
-            track_child_nodes=True  # This test requires child tracking
+            max_tracked_nodes=3
         )
         
         # Track nodes in order
@@ -234,18 +233,16 @@ class TestNodeTrackingLimits:
             async for _ in adapter.get_children(node):
                 pass
         
-        # With max_tracked_nodes=3 and 10 children per node,
-        # we track parent + children, but only keep last 3 due to LRU.
-        # Since path_4 is last processed with 10 children,
-        # we'll have the last 3 children we tracked from path_4
+        # With max_tracked_nodes=3 and child tracking removed,
+        # we only track parent nodes that are visited.
+        # Should have the last 3 parent paths due to LRU eviction.
         tracked_paths = set(adapter.node_completeness.keys())
-        # The last children tracked will be child_7, child_8, child_9
-        # (in some order due to dict iteration)
         assert len(tracked_paths) == 3, f"Should have exactly 3 tracked nodes, got {len(tracked_paths)}"
-        # All should be children of path_4
-        for tracked in tracked_paths:
-            assert "path_4" in tracked, f"Expected child of path_4, got {tracked}"
-            assert "child" in tracked, f"Expected child node, got {tracked}"
+        
+        # Should have path_2, path_3, path_4 (the last 3 visited)
+        expected = {str(Path(f"/path_{i}")) for i in [2, 3, 4]}
+        actual = {str(Path(p)) for p in tracked_paths}
+        assert actual == expected, f"Expected {expected}, got {actual}"
 
 
 class TestValidationTTL:
