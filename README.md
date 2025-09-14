@@ -10,7 +10,7 @@ DazzleTreeLib is a Python library providing both synchronous and asynchronous tr
 - 💾 **Memory Efficient**: Streaming iterators for handling large trees
 - 🛡️ **Error Resilient**: Structured concurrency with proper error handling
 - 🔧 **Highly Extensible**: Custom adapters, collectors, and traversal strategies
-- 🚀 **High-Performance Caching**: Optional 55x speedup for repeated traversals
+- 🚀 **High-Performance Caching**: 85-90% speedup with completeness-aware caching
 
 ## 📊 Performance
 
@@ -231,36 +231,47 @@ async def is_python_file(node):
 python_files = await filter_tree_async(root, predicate=is_python_file)
 ```
 
-### High-Performance Caching (New in v0.8.0!)
+### High-Performance Caching
 
-Get 55x speedup on repeated traversals with the optional caching layer:
+DazzleTreeLib features a sophisticated **completeness-aware caching system** that provides 85-90% performance improvements with intelligent memory management.
 
 ```python
-from dazzletreelib.aio.adapters import FastAsyncFileSystemAdapter
-from dazzletreelib.aio.caching import CachingTreeAdapter, FilesystemCachingAdapter
+from dazzletreelib.aio.adapters import CompletenessAwareCacheAdapter
 
-# Basic caching with TTL
-base_adapter = FastAsyncFileSystemAdapter()
-cached_adapter = CachingTreeAdapter(base_adapter, max_size=50000, ttl=300)
+# Safe mode (default) - with memory protection
+cached_adapter = CompletenessAwareCacheAdapter(
+    base_adapter,
+    enable_oom_protection=True,
+    max_entries=10000,
+    validation_ttl_seconds=5
+)
 
-# First traversal: ~40ms for 1000 nodes
+# Fast mode - maximum performance (85-90% faster)
+fast_adapter = CompletenessAwareCacheAdapter(
+    base_adapter,
+    enable_oom_protection=False
+)
+
+# First traversal: populates cache
 async for node in traverse_tree_async(root, adapter=cached_adapter):
     process(node)
 
-# Second traversal: <1ms! (55x faster)
+# Second traversal: uses cache (85-90% faster!)
 async for node in traverse_tree_async(root, adapter=cached_adapter):
     process(node)
-
-# Filesystem-specific caching with instant invalidation
-fs_cached = FilesystemCachingAdapter(base_adapter)  # Uses mtime for change detection
 ```
 
 Key features:
-- **Zero API changes**: Completely backwards compatible
-- **Future-based coordination**: Prevents duplicate concurrent scans
-- **Dual-cache system**: mtime validation with TTL fallback
-- **Statistics tracking**: Monitor cache performance
-- **Memory efficient**: ~300 bytes per cached directory
+- **Completeness tracking**: Knows if subtree is fully or partially cached
+- **Depth-based caching**: Understands traversal depth patterns
+- **Safe/Fast modes**: Choose between safety and maximum performance
+- **LRU eviction**: Intelligent memory management with OrderedDict
+- **TTL validation**: Configurable freshness checks with mtime
+- **99% memory reduction**: Recent optimization removed redundant tracking
+
+📖 **Documentation:**
+- **[Caching Basics](docs/caching-basics.md)** - Start here if new to caching concepts
+- **[Advanced Caching](docs/caching.md)** - Architecture details, comparisons with other libraries
 
 ## 🏗️ Architecture
 

@@ -318,6 +318,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self.hits = 0
         self.misses = 0
         self.upgrades = 0
+        self.bypasses = 0  # Track cache bypass calls
         
         # Node tracking configuration
         self._depth_context = None  # Depth context for operations
@@ -348,12 +349,30 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             self._track_node_visit_impl = None  # None instead of lambda for zero overhead
             self._add_to_cache_impl = self._add_to_cache_fast
     
-    async def get_children(self, node: Any) -> AsyncIterator[Any]:
+    async def get_children(self, node: Any, use_cache: bool = True) -> AsyncIterator[Any]:
         """
-        Get children with caching.
+        Get children with caching and optional cache bypass.
 
-        Uses the cache when available, otherwise fetches and caches.
+        Args:
+            node: The node to get children for.
+            use_cache: If False, bypass cache and fetch directly from source.
+                      Default is True (use cache when available).
+                      Note: Pass by name for clarity (e.g., use_cache=False).
+
+        Yields:
+            Children of the node, from cache if available and use_cache=True,
+            or directly from the base adapter if use_cache=False.
         """
+        # Performance note: Not using keyword-only (*, use_cache) to avoid overhead
+        # in this hot code path that may be called millions of times
+
+        # Handle cache bypass - works for both safe and fast modes
+        if not use_cache:
+            self.bypasses += 1
+            async for child in self.base_adapter.get_children(node):
+                yield child
+            return
+
         # Fast mode optimization: minimal overhead path
         if not self.enable_oom_protection:
             # Get path from node
@@ -418,10 +437,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                     entry.access_count += 1
                     if self.should_update_lru:
                         self.cache.move_to_end(cache_key)
-                    # Yield cached children
-                    if isinstance(entry.data, list):
-                        for child in entry.data:
-                            yield child
+                    # Yield cached children - data is always a list
+                    for child in entry.data:
+                        yield child
                     return
 
             # Validate cache entry freshness if mtime is available
@@ -449,10 +467,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                                 if self.should_update_lru:
                                     self.cache.move_to_end(cache_key)
                                 
-                                # Yield cached children
-                                if isinstance(entry.data, list):
-                                    for child in entry.data:
-                                        yield child
+                                # Yield cached children - data is always a list
+                                for child in entry.data:
+                                    yield child
                                 return
                         else:
                             # Can't get current mtime, use cache optimistically
@@ -461,9 +478,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                             if self.should_update_lru:
                                 self.cache.move_to_end(cache_key)
                             
-                            if isinstance(entry.data, list):
-                                for child in entry.data:
-                                    yield child
+                            # Data is always a list
+                            for child in entry.data:
+                                yield child
                             return
                     except Exception:
                         # Error getting metadata, use cache optimistically
@@ -472,9 +489,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                         if self.should_update_lru:
                             self.cache.move_to_end(cache_key)
                         
-                        if isinstance(entry.data, list):
-                            for child in entry.data:
-                                yield child
+                        # Data is always a list
+                        for child in entry.data:
+                            yield child
                         return
                 else:
                     # TTL says skip validation, use cache directly
@@ -483,9 +500,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                     if self.should_update_lru:
                         self.cache.move_to_end(cache_key)
                     
-                    if isinstance(entry.data, list):
-                        for child in entry.data:
-                            yield child
+                    # Data is always a list
+                    for child in entry.data:
+                        yield child
                     return
             else:
                 # No mtime validation possible, use cache as-is
@@ -495,9 +512,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                     self.cache.move_to_end(cache_key)
                 
                 # Yield cached children
-                if isinstance(entry.data, list):
-                    for child in entry.data:
-                        yield child
+                # Data is always a list
+                for child in entry.data:
+                    yield child
                 return
         
         # Check if we have a deeper scan that satisfies this request
@@ -524,9 +541,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                         if self.should_update_lru:
                             self.cache.move_to_end(existing_key)
                         # Yield cached children
-                        if isinstance(entry.data, list):
-                            for child in entry.data:
-                                yield child
+                        # Data is always a list
+                        for child in entry.data:
+                            yield child
                         return
         
         # Not in cache - get from base adapter and cache the result

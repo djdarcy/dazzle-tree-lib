@@ -4,16 +4,33 @@ Welcome to the DazzleTreeLib documentation! This guide will help you understand 
 
 ## Table of Contents
 
+### Core Documentation
 1. [**Getting Started**](getting-started.md) - Installation and basic usage
 2. [**API Reference**](api-reference.md) - Complete API documentation
 3. [**Architecture Overview**](architecture.md) - Understanding the library design
-4. [**Adapter Development Guide**](adapter-development.md) - Creating custom adapters
-5. [**Sync/Async Compatibility**](sync-async-compatibility.md) - Maintaining dual API support
-6. [**Performance Guide**](performance.md) - Optimization and benchmarking
-7. [**Examples**](../examples/) - Complete working examples
+
+### Caching System
+4. [**Caching Basics**](caching-basics.md) - 🆕 Beginner-friendly introduction to caching
+5. [**Caching Architecture**](caching.md) - 🆕 Advanced caching details and configuration
+
+### Development Guides
+6. [**Adapter Development Guide**](adapter-development.md) - Creating custom adapters
+7. [**Sync/Async Compatibility**](sync-async-compatibility.md) - Maintaining dual API support
+8. [**Performance Guide**](performance.md) - Optimization and benchmarking
+
+### Additional Resources
+9. [**Examples**](../examples/) - Complete working examples
+10. [**Node Tracking Optimization**](node-tracking-optimization.md) - Memory optimization history
 
 ## Quick Links
 
+### 🆕 Caching Documentation
+- [**New to Caching?**](caching-basics.md) - Start here for concepts and examples
+- [**Configure Caching**](caching.md#configuration-options) - Settings and options
+- [**Caching Examples**](caching-basics.md#real-world-example-scanning-your-music-library) - Real-world usage
+- [**Performance Tuning**](caching.md#performance-tuning) - Optimize cache performance
+
+### Development
 - [Creating a Custom Adapter](adapter-development.md#creating-a-custom-adapter)
 - [Sync vs Async API Differences](sync-async-compatibility.md#api-differences)
 - [Performance Benchmarks](performance.md#benchmarks)
