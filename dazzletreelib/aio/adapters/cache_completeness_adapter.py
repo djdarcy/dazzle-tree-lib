@@ -7,7 +7,7 @@ efficient cache reuse when shallower scans are requested after deeper ones.
 
 import time
 import asyncio
-from typing import Any, AsyncIterator, Optional, Tuple, Dict
+from typing import Any, AsyncIterator, Optional, Tuple, Dict, Union
 from pathlib import Path
 from collections import OrderedDict
 from ..core import AsyncTreeAdapter, CacheKeyMixin
@@ -319,6 +319,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self.misses = 0
         self.upgrades = 0
         self.bypasses = 0  # Track cache bypass calls
+        self.invalidations = 0  # Track manual invalidations
         
         # Node tracking configuration
         self._depth_context = None  # Depth context for operations
@@ -894,5 +895,130 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             "upgrades": self.upgrades,
             "entries": len(self.cache),
             "memory_bytes": self.current_memory,
-            "memory_mb": self.current_memory / (1024 * 1024)
+            "memory_mb": self.current_memory / (1024 * 1024),
+            "invalidations": self.invalidations,
+            "bypasses": self.bypasses
         }
+
+    def _normalize_path(self, path: Union[str, Path]) -> str:
+        """
+        Normalize a path for cache key matching.
+
+        Converts to forward slashes for consistency across platforms.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+        # Use as_posix() to get forward slashes even on Windows
+        return path.as_posix()
+
+    async def invalidate(self, path: Union[str, Path], deep: bool = False) -> int:
+        """
+        Invalidate cache entries for a specific path.
+
+        Args:
+            path: Path to invalidate (string or Path object)
+            deep: If True, also invalidate all descendant paths
+
+        Returns:
+            Number of entries invalidated
+
+        Examples:
+            # Invalidate single directory
+            count = await adapter.invalidate("/home/user/docs")
+
+            # Invalidate directory and all subdirectories
+            count = await adapter.invalidate("/home/user", deep=True)
+        """
+        # Fast path for invalidate_all
+        if str(path) in ('/', '\\') and deep:
+            return await self.invalidate_all()
+
+        path_str = self._normalize_path(path)
+        count = 0
+        keys_to_remove = []
+        memory_to_free = 0
+
+        # Pre-compile matcher for performance
+        if deep:
+            # For deep invalidation, match the path itself and any descendants
+            prefix = path_str.rstrip('/') + '/'
+            def matcher(key_path: str) -> bool:
+                return key_path == path_str or key_path.startswith(prefix)
+        else:
+            # For single path, match exactly
+            def matcher(key_path: str) -> bool:
+                return key_path == path_str
+
+        # Collect matching keys (snapshot iteration for safety)
+        for cache_key in list(self.cache.keys()):
+            # Cache key is always a tuple: (class_id, instance_num, "completeness", path_str, depth)
+            # The path is at index 3 - no isinstance needed as we control the format
+            try:
+                key_path = cache_key[3]  # Path is at index 3
+                # Normalize the key path for comparison
+                key_path = str(key_path).replace('\\', '/')
+
+                if matcher(key_path):
+                    entry = self.cache[cache_key]
+                    keys_to_remove.append(cache_key)
+                    if self.enable_oom_protection:
+                        # Only track memory in safe mode
+                        memory_to_free += entry.size_estimate
+            except ValueError:
+                # Malformed cache key, skip
+                continue
+
+        # Remove entries in batch
+        for key in keys_to_remove:
+            del self.cache[key]
+            count += 1
+
+        # Update memory tracking for safe mode
+        if self.enable_oom_protection and memory_to_free > 0:
+            self.current_memory = max(0, self.current_memory - memory_to_free)
+
+        # Clean up completeness tracking
+        if self.node_completeness:
+            completeness_keys_to_remove = []
+            for comp_path in list(self.node_completeness.keys()):
+                # Normalize for comparison
+                comp_path_normalized = comp_path.replace('\\', '/')
+                if matcher(comp_path_normalized):
+                    completeness_keys_to_remove.append(comp_path)
+
+            for key in completeness_keys_to_remove:
+                del self.node_completeness[key]
+
+        # Update statistics
+        self.invalidations += count
+
+        return count
+
+    async def invalidate_all(self) -> int:
+        """
+        Clear all cache entries.
+
+        Returns:
+            Total number of entries cleared
+
+        Example:
+            # Clear entire cache
+            count = await adapter.invalidate_all()
+            print(f"Cleared {count} cache entries")
+        """
+        count = len(self.cache)
+
+        # Clear the cache
+        self.cache.clear()
+
+        # Clear completeness tracking
+        if self.node_completeness:
+            self.node_completeness.clear()
+
+        # Reset memory tracking
+        self.current_memory = 0
+
+        # Update statistics
+        self.invalidations += count
+
+        return count

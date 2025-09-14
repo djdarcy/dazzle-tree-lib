@@ -202,6 +202,27 @@ This is perfect for:
 - Working with volatile data
 - Development and testing
 
+### Q: "How do I clear the cache when I know files have changed?"
+
+**A:** As of v0.9.5, you can manually invalidate cache entries:
+
+```python
+# Clear cache for a specific path
+await cached_adapter.invalidate("/Music/Jazz")
+
+# Clear a path and all its subdirectories
+await cached_adapter.invalidate("/Music", deep=True)
+
+# Clear the entire cache
+await cached_adapter.invalidate_all()
+```
+
+This is useful when:
+- You know external changes happened
+- You want to free memory
+- You're testing with fresh data
+- You need to force a rescan
+
 ### Q: "What happens if a file changes while I'm traversing?"
 
 **A:** DazzleTreeLib's validation catches this:

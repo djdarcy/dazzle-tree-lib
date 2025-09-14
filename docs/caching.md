@@ -215,7 +215,7 @@ print(f"Current entries: {len(adapter.cache)}")
 | **Safe/Fast Modes** | ✅ | ❌ | ❌ | ❌ |
 | **Memory Limits** | ✅ | ✅ | Partial | ❌ |
 | **Cache Bypass** | ✅ | ✅ | ✅ | N/A |
-| **Manual Invalidation** | ⚠️ | ✅ | ✅ | N/A |
+| **Manual Invalidation** | ✅ | ✅ | ✅ | N/A |
 | **Cache Statistics** | ✅ | Partial | Partial | ❌ |
 
 ### Key Differences
@@ -243,7 +243,7 @@ print(f"Current entries: {len(adapter.cache)}")
 ### Available Features
 
 1. **Cache Bypass per Call** ✅ (v0.9.4+)
-   
+
    ```python
    # Force fresh read, bypassing cache
    async for child in adapter.get_children(node, use_cache=False):
@@ -251,7 +251,20 @@ print(f"Current entries: {len(adapter.cache)}")
        process(child)
    ```
 
-### Missing Features (Planned for Phase 2)
+2. **Manual Cache Invalidation** ✅ (v0.9.5+)
+
+   ```python
+   # Invalidate specific path
+   count = await adapter.invalidate("/specific/path")
+
+   # Invalidate path and all descendants
+   count = await adapter.invalidate("/path", deep=True)
+
+   # Clear entire cache
+   count = await adapter.invalidate_all()
+   ```
+
+### Missing Features (Planned for Future Releases)
 
 1. **Manual Cache Refresh**
    ```python
@@ -259,27 +272,28 @@ print(f"Current entries: {len(adapter.cache)}")
    adapter.refresh("/path/to/dir", deep=True)
    ```
 
-2. **Explicit Invalidation**
-   ```python
-   # Not yet available (planned):
-   adapter.invalidate("/specific/path")
-   adapter.invalidate_all()
-   ```
-
-3. **Per-Path TTL Configuration**
+2. **Per-Path TTL Configuration**
    ```python
    # Not yet available (planned):
    adapter.set_ttl("/volatile/dir", ttl_seconds=1)
    adapter.set_ttl("/stable/dir", ttl_seconds=3600)
    ```
 
+3. **Cache Control Context Managers**
+   ```python
+   # Not yet available (planned):
+   async with adapter.no_cache():
+       # All operations bypass cache
+       pass
+   ```
+
 ### Workarounds
 
-Until these features are added:
+For features not yet implemented:
 
-- **Force fresh read**: Use `use_cache=False` parameter (available now!)
-- **Clear cache**: Create new adapter instance
-- **Selective invalidation**: Use short TTL for volatile directories
+- **Force refresh**: Use `invalidate()` followed by access
+- **Per-path TTL**: Use multiple adapter instances with different TTLs
+- **Context managers**: Use `use_cache=False` parameter
 
 ## Performance Tuning
 
@@ -360,6 +374,38 @@ class CompletenessAwareCacheAdapter(AsyncTreeAdapter):
 
         Yields:
             Children of the node
+        """
+
+    async def invalidate(self, path: Union[str, Path], deep: bool = False) -> int:
+        """
+        Invalidate cache entries for a specific path (v0.9.5+).
+
+        Args:
+            path: Path to invalidate (string or Path object)
+            deep: If True, also invalidate all descendant paths
+
+        Returns:
+            Number of entries invalidated
+
+        Examples:
+            # Invalidate single directory
+            count = await adapter.invalidate("/home/user/docs")
+
+            # Invalidate directory and all subdirectories
+            count = await adapter.invalidate("/home/user", deep=True)
+        """
+
+    async def invalidate_all(self) -> int:
+        """
+        Clear all cache entries (v0.9.5+).
+
+        Returns:
+            Total number of entries cleared
+
+        Example:
+            # Clear entire cache
+            count = await adapter.invalidate_all()
+            print(f"Cleared {count} cache entries")
         """
 ```
 
