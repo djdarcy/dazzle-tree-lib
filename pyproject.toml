@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dazzletreelib"
-version = "0.9.5"
+version = "0.9.6"
 description = "High-performance tree traversal library with blazing fast async support"
 readme = "README.md"
 license = {text = "MIT"}

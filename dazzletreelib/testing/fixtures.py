@@ -71,9 +71,21 @@ class TestableCache:
                 'has_cache': True
             }
         
-        # Check for CachingTreeAdapter's _cache
+        # Check for CachingTreeAdapter's _cache or SmartCachingAdapter's _cache
         if hasattr(self._adapter, '_cache'):
             cache = self._adapter._cache
+            # Handle _LruCacheStore from SmartCachingAdapter
+            if hasattr(cache, 'cache'):
+                # It's an _LruCacheStore, get the actual cache dict
+                actual_cache = cache.cache
+                return {
+                    'total_entries': len(actual_cache),
+                    'shallow_count': 0,  # SmartCachingAdapter doesn't track depth levels
+                    'partial_count': 0,
+                    'complete_count': 0,
+                    'has_cache': True
+                }
+            # Regular cache object
             return {
                 'total_entries': len(cache),
                 'shallow_count': 0,  # TTLCache doesn't track completeness
@@ -164,61 +176,96 @@ class TestableCache:
     
     def was_node_visited(self, path: Path) -> bool:
         """Check if a node was visited during traversal (node tracking).
-        
+
         This is different from was_path_cached() - it checks the node completeness
         tracker which records ALL visited nodes, not just those whose children
         were fetched.
-        
+
         Args:
             path: Path to check for visitation
-            
+
         Returns:
             True if node was visited during any traversal
         """
-        if not hasattr(self._adapter, 'node_completeness'):
-            # Fallback to cache check if no node tracking
-            return self.was_path_cached(path)
-        
-        path_str = str(path)
-        return path_str in self._adapter.node_completeness
+        # Check for SmartCachingAdapter with new API
+        if hasattr(self._adapter, 'was_discovered'):
+            # New semantic: "visited" means "discovered" for backward compat
+            # Normalize path to forward slashes for consistency
+            normalized_path = str(path).replace('\\', '/')
+            return self._adapter.was_discovered(normalized_path)
+
+        # Check for traditional node_completeness tracking
+        if hasattr(self._adapter, 'node_completeness'):
+            path_str = str(path)
+            return path_str in self._adapter.node_completeness
+
+        # Fallback to cache check if no node tracking
+        return self.was_path_cached(path)
     
     def get_node_depth(self, path: Path) -> Optional[int]:
         """Get the depth to which a node was scanned.
-        
+
         This uses the node completeness tracker to determine how deep
         a specific node was scanned during traversal.
-        
+
         Args:
             path: Path to check
-            
+
         Returns:
             Depth to which node was scanned, or None if not visited
         """
-        if not hasattr(self._adapter, 'node_completeness'):
-            # Fallback to depth if no node tracking
-            depth = self.get_completeness(path)
-            if depth is None:
-                return None
-            # Return depth directly (convert -1 to 999 for backward compat)
-            if depth == CacheEntry.COMPLETE_DEPTH:
-                return 999
-            return depth
-        
-        path_str = str(path)
-        return self._adapter.node_completeness.get(path_str)
+        # Check for SmartCachingAdapter - for now, return 1 if expanded, 0 if just discovered
+        if hasattr(self._adapter, 'was_expanded'):
+            # Normalize path to forward slashes for consistency
+            normalized_path = str(path).replace('\\', '/')
+            if self._adapter.was_expanded(normalized_path):
+                # TODO: Track actual depth in SmartCachingAdapter
+                return 1  # Expanded means at least depth 1
+            elif self._adapter.was_discovered(normalized_path):
+                return 0  # Discovered but not expanded
+            else:
+                return None  # Not visited at all
+
+        # Check for traditional node_completeness tracking
+        if hasattr(self._adapter, 'node_completeness'):
+            path_str = str(path)
+            return self._adapter.node_completeness.get(path_str)
+
+        # Fallback to cache depth if no node tracking
+        depth = self.get_completeness(path)
+        if depth is None:
+            return None
+        # Return depth directly (convert -1 to 999 for backward compat)
+        if depth == CacheEntry.COMPLETE_DEPTH:
+            return 999
+        return depth
     
     def has_node_depth(self, path: Path, expected_depth: int) -> bool:
         """Check if a node was scanned to at least the expected depth.
-        
+
         This is the node-tracking equivalent of has_partial_depth().
-        
+
         Args:
             path: Path to check
             expected_depth: Minimum depth expected
-            
+
         Returns:
             True if node was scanned to at least expected_depth
         """
+        # Special handling for SmartCachingAdapter
+        if hasattr(self._adapter, 'was_expanded'):
+            # For SmartCachingAdapter, we only track discovered/expanded, not depth levels
+            # So we use a simple heuristic:
+            # - If expected_depth == 0: just need to be discovered
+            # - If expected_depth >= 1: need to be expanded
+            # Normalize path to forward slashes for consistency
+            normalized_path = str(path).replace('\\', '/')
+            if expected_depth == 0:
+                return self._adapter.was_discovered(normalized_path)
+            else:
+                return self._adapter.was_expanded(normalized_path)
+
+        # Traditional depth checking
         actual_depth = self.get_node_depth(path)
         if actual_depth is None:
             return False

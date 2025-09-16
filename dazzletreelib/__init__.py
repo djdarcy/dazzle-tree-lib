@@ -16,7 +16,7 @@ Both implementations share the same concepts but are optimized for their
 respective execution models. Pick the one that fits your application.
 """
 
-__version__ = "0.9.5"  # Added manual cache invalidation methods (Issue #32)
+__version__ = "0.9.6"  # Added SmartCachingAdapter with clean semantics (Issue #38)
 
 # Re-export submodules for convenient access
 from . import sync
