@@ -7,10 +7,11 @@ efficient cache reuse when shallower scans are requested after deeper ones.
 
 import time
 import asyncio
-from typing import Any, AsyncIterator, Optional, Tuple, Dict, Union
+from typing import Any, AsyncIterator, Optional, Tuple, Dict, Union, Iterable
 from pathlib import Path
 from collections import OrderedDict
 from ..core import AsyncTreeAdapter, CacheKeyMixin
+from ..core.node import AsyncTreeNode
 
 
 import warnings
@@ -1043,3 +1044,84 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self.invalidations += count
 
         return count
+
+    async def invalidate_node(self, node: Optional[AsyncTreeNode], deep: bool = False) -> int:
+        """
+        Invalidate cache entries for a specific node.
+
+        This is a convenience method that accepts a node object directly
+        rather than requiring path extraction.
+
+        Args:
+            node: Tree node to invalidate
+            deep: If True, also invalidate all descendant nodes
+
+        Returns:
+            Number of entries invalidated
+
+        Raises:
+            ValueError: If node is None
+            AttributeError: If node doesn't have identifier() method
+
+        Examples:
+            # Invalidate single node
+            count = await adapter.invalidate_node(node)
+
+            # Invalidate node and all descendants
+            count = await adapter.invalidate_node(node, deep=True)
+        """
+        if node is None:
+            raise ValueError("Cannot invalidate None node")
+
+        # Get the path from the node
+        path = await node.identifier()
+
+        # Delegate to path-based invalidation
+        return await self.invalidate(path, deep=deep)
+
+    async def invalidate_nodes(self,
+                              nodes: Iterable[AsyncTreeNode],
+                              deep: bool = False,
+                              ignore_errors: bool = False) -> int:
+        """
+        Invalidate cache entries for multiple nodes.
+
+        This is a convenience method for batch invalidation of nodes.
+
+        Args:
+            nodes: Iterable of tree nodes to invalidate
+            deep: If True, also invalidate all descendants of each node
+            ignore_errors: If True, continue on errors; if False, raise on first error
+
+        Returns:
+            Total number of entries invalidated
+
+        Raises:
+            ValueError: If ignore_errors=False and a node is None
+            AttributeError: If ignore_errors=False and a node lacks identifier() method
+
+        Examples:
+            # Invalidate multiple nodes
+            stale_nodes = [node1, node2, node3]
+            count = await adapter.invalidate_nodes(stale_nodes)
+
+            # Invalidate with error tolerance
+            mixed_nodes = [good_node, None, bad_node]
+            count = await adapter.invalidate_nodes(mixed_nodes, ignore_errors=True)
+
+            # Deep invalidation of multiple subtrees
+            root_nodes = [root1, root2]
+            count = await adapter.invalidate_nodes(root_nodes, deep=True)
+        """
+        total = 0
+
+        for node in nodes:
+            try:
+                count = await self.invalidate_node(node, deep=deep)
+                total += count
+            except Exception as e:
+                if not ignore_errors:
+                    raise
+                # Silently continue if ignoring errors
+
+        return total

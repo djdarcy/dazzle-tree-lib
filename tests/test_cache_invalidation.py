@@ -25,6 +25,10 @@ class MockNode:
         self.path = path
         self.metadata_value = {'modified_time': time.time()}
 
+    async def identifier(self) -> str:
+        """Return path as string identifier."""
+        return str(self.path)
+
     async def metadata(self):
         """Return mock metadata."""
         return self.metadata_value
@@ -519,3 +523,205 @@ class TestCacheInvalidation:
         for key in cache_adapter.cache:
             if isinstance(key, tuple) and len(key) >= 5:
                 assert str(test_path) not in key[3]
+
+    async def test_invalidate_node_basic(self):
+        """Test invalidating a single node."""
+        # Create adapter with cache
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Create and populate a node
+        test_node = MockNode(Path("/test/path"))
+        child_node = MockNode(Path("/test/path/child"))
+        mock_adapter.set_children(test_node.path, [child_node])
+
+        # Get children to populate cache
+        async for _ in cache_adapter.get_children(test_node):
+            pass
+
+        # Cache should have the entry
+        assert len(cache_adapter.cache) > 0
+
+        # Invalidate using the node directly
+        count = await cache_adapter.invalidate_node(test_node)
+
+        # Should have invalidated the entry
+        assert count == 1
+        assert len(cache_adapter.cache) == 0
+
+    async def test_invalidate_node_deep(self):
+        """Test deep invalidation via node."""
+        # Create adapter with cache
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Create hierarchy
+        root_node = MockNode(Path("/root"))
+        child_node = MockNode(Path("/root/child"))
+        grandchild_node = MockNode(Path("/root/child/grandchild"))
+
+        # Set up mock adapter hierarchy
+        mock_adapter.set_children(root_node.path, [child_node])
+        mock_adapter.set_children(child_node.path, [grandchild_node])
+        mock_adapter.set_children(grandchild_node.path, [])
+
+        # Populate cache at various levels
+        async for _ in cache_adapter.get_children(root_node):
+            pass
+        async for _ in cache_adapter.get_children(child_node):
+            pass
+        async for _ in cache_adapter.get_children(grandchild_node):
+            pass
+
+        initial_count = len(cache_adapter.cache)
+        assert initial_count >= 3
+
+        # Deep invalidate from root using node
+        count = await cache_adapter.invalidate_node(root_node, deep=True)
+
+        # Should have invalidated all entries
+        assert count == initial_count
+        assert len(cache_adapter.cache) == 0
+
+    async def test_invalidate_node_none_raises(self):
+        """Test that None node raises ValueError."""
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Should raise ValueError for None node
+        with pytest.raises(ValueError, match="Cannot invalidate None node"):
+            await cache_adapter.invalidate_node(None)
+
+    async def test_invalidate_nodes_batch(self):
+        """Test batch node invalidation."""
+        # Create adapter with cache
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Create multiple nodes
+        nodes = [
+            MockNode(Path("/path1")),
+            MockNode(Path("/path2")),
+            MockNode(Path("/path3"))
+        ]
+
+        # Populate cache for each node
+        for node in nodes:
+            mock_adapter.set_children(node.path, [])
+            async for _ in cache_adapter.get_children(node):
+                pass
+
+        assert len(cache_adapter.cache) == 3
+
+        # Invalidate all nodes at once
+        count = await cache_adapter.invalidate_nodes(nodes)
+
+        # Should have invalidated all entries
+        assert count == 3
+        assert len(cache_adapter.cache) == 0
+
+    async def test_invalidate_nodes_ignore_errors(self):
+        """Test ignore_errors flag in batch invalidation."""
+        # Create adapter with cache
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Create good nodes
+        good_node1 = MockNode(Path("/good1"))
+        good_node2 = MockNode(Path("/good2"))
+
+        # Populate cache for good nodes
+        mock_adapter.set_children(good_node1.path, [])
+        mock_adapter.set_children(good_node2.path, [])
+        async for _ in cache_adapter.get_children(good_node1):
+            pass
+        async for _ in cache_adapter.get_children(good_node2):
+            pass
+
+        # Mix of good and bad nodes - put None first to test properly
+        mixed_nodes = [None, good_node1, good_node2]
+
+        # Without ignore_errors, should raise immediately on None
+        with pytest.raises(ValueError, match="Cannot invalidate None node"):
+            await cache_adapter.invalidate_nodes(mixed_nodes, ignore_errors=False)
+
+        # Cache should still have both entries after failed attempt
+        assert len(cache_adapter.cache) == 2
+
+        # With ignore_errors, should continue past None
+        count = await cache_adapter.invalidate_nodes(mixed_nodes, ignore_errors=True)
+
+        # Should have invalidated the good nodes
+        assert count == 2
+        assert len(cache_adapter.cache) == 0
+
+    async def test_invalidate_nodes_empty(self):
+        """Test empty node list returns 0."""
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Empty list should return 0 without error
+        count = await cache_adapter.invalidate_nodes([])
+        assert count == 0
+
+    async def test_invalidate_nodes_duplicates(self):
+        """Test duplicate nodes handled correctly."""
+        # Create adapter with cache
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Create a node
+        node = MockNode(Path("/test"))
+
+        # Populate cache
+        mock_adapter.set_children(node.path, [])
+        async for _ in cache_adapter.get_children(node):
+            pass
+        assert len(cache_adapter.cache) == 1
+
+        # Pass same node multiple times
+        count = await cache_adapter.invalidate_nodes([node, node, node])
+
+        # Should invalidate once (idempotent)
+        assert count == 1  # First invalidation succeeds, others find nothing
+        assert len(cache_adapter.cache) == 0
+
+    async def test_invalidate_node_with_identifier_method(self):
+        """Test that node's identifier() method is properly called."""
+        # Create a custom node class with identifier method
+        class CustomNode:
+            def __init__(self, path: str):
+                self.path = Path(path)
+
+            async def identifier(self) -> str:
+                """Return path as string identifier."""
+                return str(self.path)
+
+            async def metadata(self):
+                """Return mock metadata."""
+                return {'modified_time': time.time()}
+
+        # Create adapter with cache
+        mock_adapter = MockAdapter()
+        cache_adapter = CompletenessAwareCacheAdapter(mock_adapter, enable_oom_protection=False)
+
+        # Create custom node and populate cache
+        custom_node = CustomNode("/custom/path")
+
+        # Manually add to cache (since get_children expects MockAdapter)
+        cache_key = cache_adapter._get_cache_key(custom_node.path, 1)
+        from dazzletreelib.aio.adapters.cache_completeness_adapter import CacheEntry
+        cache_adapter.cache[cache_key] = CacheEntry(
+            data=[],  # Empty children list
+            depth=1,
+            mtime=time.time()
+        )
+
+        assert len(cache_adapter.cache) == 1
+
+        # Invalidate using the custom node
+        count = await cache_adapter.invalidate_node(custom_node)
+
+        # Should have worked via identifier() method
+        assert count == 1
+        assert len(cache_adapter.cache) == 0
