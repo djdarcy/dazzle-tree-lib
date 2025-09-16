@@ -325,7 +325,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
         self._depth_context = None  # Depth context for operations
         
         # Pre-compute mode flags to avoid runtime checks
-        self.should_track_nodes = enable_oom_protection  # Only track in safe mode
+        self.should_track_nodes = True  # Track nodes in both modes for Issue #37
         self.should_update_lru = enable_oom_protection  # Only update LRU in safe mode
 
         # Pre-detect if limits are effectively unlimited (optimization for Test 1)
@@ -345,9 +345,9 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             self._track_node_visit_impl = self._track_node_visit_safe
             self._add_to_cache_impl = self._add_to_cache_safe
         else:
-            # Fast mode: Use optimized methods with no checks
+            # Fast mode: Use optimized methods with minimal checks
             self._should_cache_impl = None  # None for zero overhead, not used in fast mode
-            self._track_node_visit_impl = None  # None instead of lambda for zero overhead
+            self._track_node_visit_impl = self._track_node_visit_fast  # Fast tracking for Issue #37
             self._add_to_cache_impl = self._add_to_cache_fast
     
     async def get_children(self, node: Any, use_cache: bool = True) -> AsyncIterator[Any]:
@@ -383,9 +383,14 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             
             # Use depth context if set, otherwise default to 1 (shallow)
             depth = self._depth_context if self._depth_context is not None else 1
+
+            # Track node visit for Issue #37 (fast tracking without LRU)
+            if self.should_track_nodes and self._track_node_visit_impl:
+                self._track_node_visit_impl(str(path), depth)
+
             cache_key = self._get_cache_key(path, depth)
-            
-            # Simple cache check - no validation, no LRU, no tracking
+
+            # Simple cache check - no validation, no LRU
             if cache_key in self.cache:
                 entry = self.cache[cache_key]
                 self.hits += 1
@@ -680,7 +685,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
     def _track_node_visit_safe(self, path_str: str, depth: int):
         """
         Track a node visit with bounded LRU eviction (safe mode).
-        
+
         Args:
             path_str: String representation of path
             depth: Depth of the visit
@@ -698,7 +703,23 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
                 # We know this is safe mode, so we have OrderedDict
                 self.node_completeness.popitem(last=False)
             self.node_completeness[path_str] = depth
-    
+
+    def _track_node_visit_fast(self, path_str: str, depth: int):
+        """
+        Track a node visit without LRU or size limits (fast mode).
+
+        WARNING: This can grow unbounded in long-running processes.
+        Consider using safe mode (enable_oom_protection=True) for production.
+
+        Args:
+            path_str: String representation of path
+            depth: Depth of the visit
+        """
+        # Unbounded growth is consistent with OOM protection being disabled
+        existing_depth = self.node_completeness.get(path_str, -2)  # Use -2 to correctly handle depth 0
+        if depth > existing_depth:
+            self.node_completeness[path_str] = depth
+
     def _should_validate_mtime(self, entry: 'CacheEntry') -> bool:
         """
         Determine if mtime validation should be performed.
