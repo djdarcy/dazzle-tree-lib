@@ -20,20 +20,31 @@ class TraversalTracker:
     This provides clear, unambiguous semantics:
     - discovered: All nodes encountered during traversal
     - expanded: Nodes that had get_children() called on them
+    - discovered_depths: Depth at which each node was first discovered
+    - expanded_depths: Depth at which each node was expanded
     """
 
     def __init__(self):
-        """Initialize empty tracking sets."""
+        """Initialize empty tracking sets and depth maps."""
         self.discovered = set()  # All nodes we've seen
         self.expanded = set()    # Nodes we've looked inside
+        self.discovered_depths = {}  # {path: depth when discovered}
+        self.expanded_depths = {}    # {path: depth when expanded}
 
-    def track_discovery(self, path: Union[str, Path]):
-        """Record that a node was discovered."""
-        self.discovered.add(str(path))
+    def track_discovery(self, path: Union[str, Path], depth: int = 0):
+        """Record that a node was discovered at a specific depth."""
+        path_str = str(path)
+        self.discovered.add(path_str)
+        # Only record first discovery depth
+        if path_str not in self.discovered_depths:
+            self.discovered_depths[path_str] = depth
 
-    def track_expansion(self, path: Union[str, Path]):
-        """Record that a node was expanded (get_children called)."""
-        self.expanded.add(str(path))
+    def track_expansion(self, path: Union[str, Path], depth: int = 0):
+        """Record that a node was expanded (get_children called) at a specific depth."""
+        path_str = str(path)
+        self.expanded.add(path_str)
+        # Record expansion depth (may overwrite if expanded multiple times)
+        self.expanded_depths[path_str] = depth
 
     def was_discovered(self, path: Union[str, Path]) -> bool:
         """Check if a node was encountered during traversal."""
@@ -42,6 +53,14 @@ class TraversalTracker:
     def was_expanded(self, path: Union[str, Path]) -> bool:
         """Check if get_children() was called on this node."""
         return str(path) in self.expanded
+
+    def get_discovery_depth(self, path: Union[str, Path]) -> Optional[int]:
+        """Get the depth at which a node was first discovered."""
+        return self.discovered_depths.get(str(path))
+
+    def get_expansion_depth(self, path: Union[str, Path]) -> Optional[int]:
+        """Get the depth at which a node was expanded."""
+        return self.expanded_depths.get(str(path))
 
     def get_discovered_count(self) -> int:
         """Get number of discovered nodes."""
@@ -55,6 +74,8 @@ class TraversalTracker:
         """Reset all tracking for a new traversal."""
         self.discovered.clear()
         self.expanded.clear()
+        self.discovered_depths.clear()
+        self.expanded_depths.clear()
 
 
 class SmartCachingAdapter(AsyncTreeAdapter):
@@ -145,29 +166,29 @@ class SmartCachingAdapter(AsyncTreeAdapter):
         else:
             path = str(node).replace('\\', '/')
 
+        # Get depth first as we need it for tracking
+        depth = 1  # Default depth
+        try:
+            depth = await self.base_adapter.get_depth(node)
+        except:
+            pass  # Use default depth if base adapter doesn't support get_depth
+
         # Track this node as expanded (and discovered if not already)
         if self.tracker:
             # Check tracking limits
             if self.max_tracked_nodes > 0 and self.tracker.get_discovered_count() >= self.max_tracked_nodes:
                 # Tracking limit reached, clear oldest entries
                 self.tracker.clear()
-            self.tracker.track_discovery(path)  # Ensure it's marked as discovered
-            self.tracker.track_expansion(path)  # And mark as expanded
+            self.tracker.track_discovery(path, depth)  # Ensure it's marked as discovered with depth
+            self.tracker.track_expansion(path, depth)  # And mark as expanded with depth
 
         # Determine if we should cache (early exit for performance)
         should_cache = use_cache and self._cache
 
-        # Only get depth if we actually need it for caching decisions
-        depth = 1  # Default depth
+        # Check if we should skip caching based on depth limits
         if should_cache and (self.max_cache_depth > 0 or self.max_path_depth > 0):
-            # Check if we should skip caching based on depth limits
-            if self.max_cache_depth > 0:
-                try:
-                    depth = await self.base_adapter.get_depth(node)
-                    if depth > self.max_cache_depth:
-                        should_cache = False  # Too deep to cache
-                except:
-                    pass  # Use default depth
+            if self.max_cache_depth > 0 and depth > self.max_cache_depth:
+                should_cache = False  # Too deep to cache
 
             # Check path depth limit only if still caching
             if should_cache and self.max_path_depth > 0:
@@ -191,7 +212,7 @@ class SmartCachingAdapter(AsyncTreeAdapter):
                             child_path = str(child.path).replace('\\', '/')
                         else:
                             child_path = str(child).replace('\\', '/')
-                        self.tracker.track_discovery(child_path)
+                        self.tracker.track_discovery(child_path, depth + 1)  # Children are at depth+1
                     yield child
                 return
 
@@ -203,13 +224,13 @@ class SmartCachingAdapter(AsyncTreeAdapter):
         async for child in self.base_adapter.get_children(node):
             children.append(child)
 
-            # Track as discovered
+            # Track as discovered at depth+1
             if self.tracker:
                 if hasattr(child, 'path'):
                     child_path = str(child.path).replace('\\', '/')
                 else:
                     child_path = str(child).replace('\\', '/')
-                self.tracker.track_discovery(child_path)
+                self.tracker.track_discovery(child_path, depth + 1)  # Children are at depth+1
 
             yield child
 
@@ -378,8 +399,26 @@ class SmartCachingAdapter(AsyncTreeAdapter):
         if self.tracker:
             stats['discovered_nodes'] = self.tracker.get_discovered_count()
             stats['expanded_nodes'] = self.tracker.get_expanded_count()
+            # Add depth tracking info
+            if self.tracker.discovered_depths:
+                depths = list(self.tracker.discovered_depths.values())
+                stats['max_discovered_depth'] = max(depths) if depths else 0
+                stats['avg_discovered_depth'] = sum(depths) / len(depths) if depths else 0
+            if self.tracker.expanded_depths:
+                depths = list(self.tracker.expanded_depths.values())
+                stats['max_expanded_depth'] = max(depths) if depths else 0
+                stats['avg_expanded_depth'] = sum(depths) / len(depths) if depths else 0
 
         return stats
+
+    def get_stats(self) -> dict:
+        """
+        Get comprehensive statistics (alias for get_cache_stats).
+
+        Returns:
+            Dictionary with cache metrics, tracking info, and depth statistics
+        """
+        return self.get_cache_stats()
 
     def get_discovered_nodes(self) -> set:
         """Get the set of all discovered node paths."""
@@ -388,6 +427,14 @@ class SmartCachingAdapter(AsyncTreeAdapter):
     def get_expanded_nodes(self) -> set:
         """Get the set of all expanded node paths."""
         return self.tracker.expanded.copy() if self.tracker else set()
+
+    def get_discovery_depth(self, path: Union[str, Path]) -> Optional[int]:
+        """Get the depth at which a node was first discovered."""
+        return self.tracker.get_discovery_depth(path) if self.tracker else None
+
+    def get_expansion_depth(self, path: Union[str, Path]) -> Optional[int]:
+        """Get the depth at which a node was expanded."""
+        return self.tracker.get_expansion_depth(path) if self.tracker else None
 
     def _should_use_cached_entry(self, entry) -> bool:
         """
