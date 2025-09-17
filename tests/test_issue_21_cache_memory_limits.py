@@ -472,56 +472,110 @@ class TestPerformance:
     
     @pytest.mark.asyncio
     @pytest.mark.slow
+    @pytest.mark.benchmark
     async def test_performance_regression_under_5_percent(self):
-        """Verify performance regression is acceptable."""
+        """Verify performance regression is acceptable with statistical stability."""
+        import gc
+        import statistics
+        import asyncio
+
+        # Force clean state
+        gc.collect()
+        gc.collect()  # Second collection for cyclic references
+        await asyncio.sleep(0.1)  # Let system settle
+
         mock_adapter = MockAdapter(children_per_node=100)
-        
-        # Baseline: adapter without limits
-        adapter_unlimited = CompletenessAwareCacheAdapter(
-            mock_adapter,
-            max_memory_mb=1000,
-            max_entries=1000000  # Effectively unlimited
-        )
-        
-        # Test: adapter with limits
-        adapter_limited = CompletenessAwareCacheAdapter(
-            mock_adapter,
-            max_memory_mb=10,
-            max_entries=1000,
-            max_cache_depth=50,
-            max_path_depth=30,
-            max_tracked_nodes=10000
-        )
-        
-        # Measure time for 1000 operations
-        paths = [Path(f"/test/path_{i}") for i in range(1000)]
-        
-        # Baseline timing
-        start = time.perf_counter()
-        for path in paths:
-            node = MockNode(path)
-            async for _ in adapter_unlimited.get_children(node):
-                pass
-        baseline_time = time.perf_counter() - start
-        
-        # Reset mock adapter
-        mock_adapter.call_count = 0
-        
-        # Limited timing
-        start = time.perf_counter()
-        for path in paths:
-            node = MockNode(path)
-            async for _ in adapter_limited.get_children(node):
-                pass
-        limited_time = time.perf_counter() - start
-        
-        # Calculate regression
-        regression = (limited_time - baseline_time) / baseline_time * 100
-        
-        # With safety checks, 28% regression is acceptable
+
+        # Test configuration - use enough paths for stable measurement
+        num_paths = 1000  # Enough for stable measurement
+        paths = [Path(f"/test/path_{i}") for i in range(num_paths)]
+
+        # Warm-up phase (unmeasured)
+        print("\n  Warming up...")
+        for _ in range(2):
+            # Create adapters for warm-up
+            adapter_unlimited = CompletenessAwareCacheAdapter(
+                mock_adapter,
+                max_memory_mb=1000,
+                max_entries=1000000  # Effectively unlimited
+            )
+            adapter_limited = CompletenessAwareCacheAdapter(
+                mock_adapter,
+                max_memory_mb=10,
+                max_entries=1000,
+                max_cache_depth=50,
+                max_path_depth=30,
+                max_tracked_nodes=10000
+            )
+
+            # Run minimal workload to warm caches
+            for path in paths[:100]:  # Just first 100 for warm-up
+                node = MockNode(path)
+                async for _ in adapter_unlimited.get_children(node):
+                    pass
+                async for _ in adapter_limited.get_children(node):
+                    pass
+
+        # Measurement phase
+        print("  Measuring performance regression...")
+        regressions = []
+
+        for run in range(5):
+            # Reset for clean measurement
+            mock_adapter.call_count = 0
+            gc.collect()
+
+            # Create fresh adapters for each run
+            adapter_unlimited = CompletenessAwareCacheAdapter(
+                mock_adapter,
+                max_memory_mb=1000,
+                max_entries=1000000  # Effectively unlimited
+            )
+
+            adapter_limited = CompletenessAwareCacheAdapter(
+                mock_adapter,
+                max_memory_mb=10,
+                max_entries=1000,
+                max_cache_depth=50,
+                max_path_depth=30,
+                max_tracked_nodes=10000
+            )
+
+            # Measure baseline (unlimited)
+            start = time.perf_counter()
+            for path in paths:
+                node = MockNode(path)
+                async for _ in adapter_unlimited.get_children(node):
+                    pass
+            baseline_time = time.perf_counter() - start
+
+            # Reset mock adapter between measurements
+            mock_adapter.call_count = 0
+
+            # Measure limited
+            start = time.perf_counter()
+            for path in paths:
+                node = MockNode(path)
+                async for _ in adapter_limited.get_children(node):
+                    pass
+            limited_time = time.perf_counter() - start
+
+            # Calculate regression for this run
+            regression = (limited_time - baseline_time) / baseline_time * 100
+            regressions.append(regression)
+            print(f"    Run {run + 1}: {regression:.1f}%")
+
+        # Use median for stability
+        median_regression = statistics.median(regressions)
+
+        print(f"\n  Median regression: {median_regression:.1f}%")
+        print(f"  All measurements: {[f'{r:.1f}%' for r in regressions]}")
+
+        # Keep strict 28% limit - statistical stability should eliminate false positives
         # (The OOM prevention and node tracking in fast mode are worth the performance cost)
         # Note: Threshold increased from 25% to 28% after fixing Issue #37 (fast mode tracking)
-        assert regression < 28, f"Performance regression {regression:.1f}% exceeds acceptable limit (28%)"
+        assert median_regression < 28, \
+            f"Performance regression {median_regression:.1f}% exceeds acceptable limit (28%)"
 
 
 # Test helper functions

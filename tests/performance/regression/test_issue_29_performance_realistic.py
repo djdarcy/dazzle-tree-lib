@@ -120,59 +120,70 @@ class TestRealisticPerformance:
     @pytest.mark.asyncio
     async def test_cache_hit_performance(self):
         """Test performance for cache hits (best case scenario)."""
-        paths = [Path(f"/test/path_{i}") for i in range(100)]
-        
+        import statistics
+
+        # Use larger dataset for more stable measurements
+        paths = [Path(f"/test/path_{i}") for i in range(5000)]  # Increased from 100
+
         # SAFE mode with cache hits
         mock_adapter_safe = MockAdapter(children_per_node=10)
         safe_adapter = CompletenessAwareCacheAdapter(
             mock_adapter_safe,
             enable_oom_protection=True
         )
-        
+
         # Warm up cache
         for path in paths:
             node = MockNode(path)
             async for _ in safe_adapter.get_children(node):
                 pass
-        
-        # Time cache hits
-        start = time.perf_counter()
-        for _ in range(10):  # Multiple rounds
-            for path in paths:
+
+        # Multiple measurements for statistical stability
+        safe_measurements = []
+        for measurement in range(5):  # Take 5 measurements
+            start = time.perf_counter()
+            for path in paths:  # Single pass per measurement
                 node = MockNode(path)
                 async for _ in safe_adapter.get_children(node):
                     pass
-        safe_hit_time = time.perf_counter() - start
-        
+            elapsed = time.perf_counter() - start
+            safe_measurements.append(elapsed)
+
         # FAST mode with cache hits
         mock_adapter_fast = MockAdapter(children_per_node=10)
         fast_adapter = CompletenessAwareCacheAdapter(
             mock_adapter_fast,
             enable_oom_protection=False
         )
-        
+
         # Warm up cache
         for path in paths:
             node = MockNode(path)
             async for _ in fast_adapter.get_children(node):
                 pass
-        
-        # Time cache hits
-        start = time.perf_counter()
-        for _ in range(10):  # Multiple rounds
-            for path in paths:
+
+        # Multiple measurements for statistical stability
+        fast_measurements = []
+        for measurement in range(5):  # Take 5 measurements
+            start = time.perf_counter()
+            for path in paths:  # Single pass per measurement
                 node = MockNode(path)
                 async for _ in fast_adapter.get_children(node):
                     pass
-        fast_hit_time = time.perf_counter() - start
-        
+            elapsed = time.perf_counter() - start
+            fast_measurements.append(elapsed)
+
+        # Use median for stability (less affected by outliers than mean)
+        safe_hit_time = statistics.median(safe_measurements)
+        fast_hit_time = statistics.median(fast_measurements)
+
         improvement = (safe_hit_time - fast_hit_time) / safe_hit_time * 100
-        
-        print(f"\nCache hit performance:")
-        print(f"Safe mode: {safe_hit_time:.3f}s")
-        print(f"Fast mode: {fast_hit_time:.3f}s")
+
+        print(f"\nCache hit performance (median of 5 runs):")
+        print(f"Safe mode: {safe_hit_time:.3f}s (measurements: {[f'{t:.3f}' for t in safe_measurements]})")
+        print(f"Fast mode: {fast_hit_time:.3f}s (measurements: {[f'{t:.3f}' for t in fast_measurements]})")
         print(f"Improvement: {improvement:.1f}%")
-        
+
         # Note: For cache hits, OrderedDict.move_to_end() can provide better cache locality
         # than plain dict, so we allow fast mode to be within 10% of safe mode
         assert fast_hit_time <= safe_hit_time * 1.1, \

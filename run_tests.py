@@ -28,13 +28,15 @@ def run_tests(include_slow=False):
         "--durations=10",            # Show 10 slowest tests
         "-v"                         # Verbose output
     ]
-    
+
     if not include_slow:
+        # Exclude performance tests directory when not including slow tests
+        cmd.extend(["--ignore=tests/performance"])
         cmd.extend(["-m", "not slow"])
-        print("Running all tests EXCEPT slow tests, one-offs, and POC demos...")
+        print("Running all FUNCTIONAL tests (excluding performance, slow, one-offs, and POC)...")
         print("=" * 60)
     else:
-        print("Running ALL tests including slow ones (but not one-offs or POC)...")
+        print("Running ALL tests including performance suite (but not one-offs or POC)...")
         print("=" * 60)
     
     result = subprocess.run(cmd, cwd=Path(__file__).parent)
@@ -50,37 +52,41 @@ def show_slow_tests():
     print("-" * 60)
     
     slow_tests = [
-        # test_depth_tracking.py tests
+        # test_depth_tracking.py tests (still in main tests directory)
         ("test_depth_tracking.py::TestDepthPerformance::test_depth_tracking_overhead",
          "Tests overhead of depth tracking on 10,000 nodes",
          "~5-10s", "Performance baseline measurement"),
-        
+
         ("test_depth_tracking.py::TestDepthPerformance::test_filter_by_depth_performance",
          "Tests filter_by_depth with 10,000 nodes at various depths",
          "~5-10s", "Ensures depth filtering remains efficient"),
-        
-        # test_depth_tracking_performance_enhanced.py tests
-        ("test_depth_tracking_performance_enhanced.py::test_large_tree_performance_with_progress",
+
+        # Performance tests now in tests/performance/benchmarks/
+        ("tests/performance/benchmarks/test_depth_tracking_performance_enhanced.py::test_large_tree_performance_with_progress",
          "Tests traversal of 10,000+ nodes with progress tracking",
          "~10-20s", "Validates performance at scale with progress bars"),
-        
-        ("test_depth_tracking_performance_enhanced.py::test_filter_performance_realistic",
+
+        ("tests/performance/benchmarks/test_depth_tracking_performance_enhanced.py::test_filter_performance_realistic",
          "Tests realistic filesystem simulation with 1,000 directories",
          "~5-15s", "Simulates real-world directory structures"),
-        
-        # test_performance_async.py tests
-        ("test_performance_async.py::test_traversal_speed_medium_tree",
+
+        ("tests/performance/benchmarks/test_performance_async.py::test_traversal_speed_medium_tree",
          "Benchmarks async traversal on medium tree (1,000 nodes)",
          "~5-10s", "Performance benchmark for medium datasets"),
-        
-        ("test_performance_async.py::test_traversal_speed_large_tree",
+
+        ("tests/performance/benchmarks/test_performance_async.py::test_traversal_speed_large_tree",
          "Benchmarks async traversal on large tree (10,000 nodes)",
          "~30-60s", "Performance benchmark for large datasets"),
-        
+
         # test_performance.py tests (ENTIRE CLASS - 13 tests)
-        ("test_performance.py::TestPerformance (13 tests)",
+        ("tests/performance/benchmarks/test_performance.py::TestPerformance (13 tests)",
          "Comprehensive sync performance test suite",
-         "~60-120s", "Creates 32,768+ directories in setUpClass! Tests caching, strategies, depth, filtering")
+         "~60-120s", "Creates 32,768+ directories in setUpClass! Tests caching, strategies, depth, filtering"),
+
+        # Issue-specific performance regression tests
+        ("tests/performance/regression/test_issue_29_performance_*.py (3 files)",
+         "Performance regression tests for Issue #29",
+         "~10-30s", "Validates fast mode performance vs safe mode")
     ]
     
     for test_name, description, duration, reason in slow_tests:
