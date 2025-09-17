@@ -32,7 +32,8 @@ class _LruCacheStore:
                  max_memory_mb: int = 100,
                  max_entries: int = 10000,
                  max_cache_depth: int = 50,
-                 max_path_depth: int = 30):
+                 max_path_depth: int = 30,
+                 eviction_callback=None):
         """
         Initialize cache storage with optional protection limits.
 
@@ -42,6 +43,7 @@ class _LruCacheStore:
             max_entries: Maximum number of cache entries
             max_cache_depth: Maximum depth to cache
             max_path_depth: Maximum path components to cache
+            eviction_callback: Optional callback when entries are evicted (path_str)
         """
         self.enable_protection = enable_protection
 
@@ -63,6 +65,7 @@ class _LruCacheStore:
         self.current_memory = 0
         self.hits = 0
         self.misses = 0
+        self.eviction_callback = eviction_callback
 
     def get(self, key: Tuple) -> Optional[Any]:
         """
@@ -254,6 +257,11 @@ class _LruCacheStore:
             oldest_entry = self.cache[oldest_key]
             entry_size = getattr(oldest_entry, 'size_estimate', 100)
 
+            # Notify callback if provided
+            if self.eviction_callback and isinstance(oldest_key, tuple) and len(oldest_key) > 0:
+                path = oldest_key[0]
+                self.eviction_callback(str(path))
+
             # Remove entry
             del self.cache[oldest_key]
             self.current_memory -= entry_size
@@ -268,6 +276,11 @@ class _LruCacheStore:
         oldest_key = next(iter(self.cache))
         oldest_entry = self.cache[oldest_key]
         entry_size = getattr(oldest_entry, 'size_estimate', 100)
+
+        # Notify callback if provided
+        if self.eviction_callback and isinstance(oldest_key, tuple) and len(oldest_key) > 0:
+            path = oldest_key[0]
+            self.eviction_callback(str(path))
 
         # Remove entry
         del self.cache[oldest_key]

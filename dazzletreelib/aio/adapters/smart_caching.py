@@ -3,14 +3,56 @@ Smart caching adapter with clean API design.
 
 This module provides the new, cleaner API for DazzleTreeLib v1.0
 without backward compatibility constraints.
+
+Migration from CompletenessAwareCacheAdapter:
+----------------------------------------------
+The SmartCachingAdapter provides cleaner semantics than the old adapter:
+
+Old API (CompletenessAwareCacheAdapter):
+    adapter = CompletenessAwareCacheAdapter(base)
+    was_visited = adapter.was_node_visited(path)  # Ambiguous!
+
+New API (SmartCachingAdapter):
+    adapter = SmartCachingAdapter(base)
+    was_seen = adapter.was_discovered(path)  # Clear: encountered
+    was_processed = adapter.was_expanded(path)  # Clear: get_children called
+
+Key Differences:
+- 'visited' → 'discovered' (node encountered) + 'expanded' (children fetched)
+- Depth tracking included by default
+- Cleaner configuration via factory functions
+- Optional tri-state returns for incomplete cache scenarios
+
+Factory Functions:
+    # Bounded cache with tracking
+    adapter = create_bounded_cache_adapter(base, max_memory_mb=100)
+
+    # Unlimited cache
+    adapter = create_unlimited_cache_adapter(base)
+
+    # Tracking only, no caching
+    adapter = create_tracking_only_adapter(base)
 """
 
-from typing import Any, AsyncIterator, Optional, Union
+from typing import Any, AsyncIterator, Optional, Union, Callable
 from pathlib import Path
 from abc import ABC, abstractmethod
+from enum import Enum
 
 from ..core import AsyncTreeAdapter
 from ._cache_store import _LruCacheStore
+
+
+class TrackingState(Enum):
+    """
+    Tri-state returns for tracking queries in safe mode.
+
+    Used when cache eviction may have removed tracking data,
+    providing honest answers about what we know.
+    """
+    KNOWN_PRESENT = 1      # Definitely discovered/expanded
+    KNOWN_ABSENT = 2       # Definitely not discovered/expanded
+    UNKNOWN_EVICTED = 3    # Data was evicted, can't be sure
 
 
 class TraversalTracker:
@@ -24,12 +66,21 @@ class TraversalTracker:
     - expanded_depths: Depth at which each node was expanded
     """
 
-    def __init__(self):
-        """Initialize empty tracking sets and depth maps."""
+    def __init__(self, enable_safe_mode: bool = False):
+        """Initialize empty tracking sets and depth maps.
+
+        Args:
+            enable_safe_mode: If True, track evicted nodes for tri-state returns
+        """
         self.discovered = set()  # All nodes we've seen
         self.expanded = set()    # Nodes we've looked inside
         self.discovered_depths = {}  # {path: depth when discovered}
         self.expanded_depths = {}    # {path: depth when expanded}
+
+        # For tri-state tracking in safe mode
+        self.enable_safe_mode = enable_safe_mode
+        self.evicted_discovered = set()  # Nodes that were discovered but evicted
+        self.evicted_expanded = set()    # Nodes that were expanded but evicted
 
     def track_discovery(self, path: Union[str, Path], depth: int = 0):
         """Record that a node was discovered at a specific depth."""
@@ -70,12 +121,62 @@ class TraversalTracker:
         """Get number of expanded nodes."""
         return len(self.expanded)
 
+    def get_discovery_state(self, path: Union[str, Path]) -> TrackingState:
+        """Get tri-state discovery status for safe mode.
+
+        Returns:
+            TrackingState indicating if node was discovered, not discovered, or unknown
+        """
+        path_str = str(path)
+        if path_str in self.discovered:
+            return TrackingState.KNOWN_PRESENT
+        elif self.enable_safe_mode and path_str in self.evicted_discovered:
+            return TrackingState.UNKNOWN_EVICTED
+        else:
+            return TrackingState.KNOWN_ABSENT
+
+    def get_expansion_state(self, path: Union[str, Path]) -> TrackingState:
+        """Get tri-state expansion status for safe mode.
+
+        Returns:
+            TrackingState indicating if node was expanded, not expanded, or unknown
+        """
+        path_str = str(path)
+        if path_str in self.expanded:
+            return TrackingState.KNOWN_PRESENT
+        elif self.enable_safe_mode and path_str in self.evicted_expanded:
+            return TrackingState.UNKNOWN_EVICTED
+        else:
+            return TrackingState.KNOWN_ABSENT
+
+    def mark_evicted(self, path: Union[str, Path]):
+        """Mark a node's tracking data as evicted (safe mode only).
+
+        When LRU eviction happens, we can track that we once knew about this node.
+        """
+        if not self.enable_safe_mode:
+            return
+
+        path_str = str(path)
+        if path_str in self.discovered:
+            self.evicted_discovered.add(path_str)
+            self.discovered.discard(path_str)
+            self.discovered_depths.pop(path_str, None)
+
+        if path_str in self.expanded:
+            self.evicted_expanded.add(path_str)
+            self.expanded.discard(path_str)
+            self.expanded_depths.pop(path_str, None)
+
     def clear(self):
         """Reset all tracking for a new traversal."""
         self.discovered.clear()
         self.expanded.clear()
         self.discovered_depths.clear()
         self.expanded_depths.clear()
+        if self.enable_safe_mode:
+            self.evicted_discovered.clear()
+            self.evicted_expanded.clear()
 
 
 class SmartCachingAdapter(AsyncTreeAdapter):
@@ -98,7 +199,8 @@ class SmartCachingAdapter(AsyncTreeAdapter):
                  validation_ttl_seconds: float = 5.0,
                  max_cache_depth: int = 50,
                  max_path_depth: int = 30,
-                 max_tracked_nodes: int = 10000):
+                 max_tracked_nodes: int = 10000,
+                 enable_safe_mode: bool = False):
         """
         Initialize smart caching adapter.
 
@@ -111,6 +213,7 @@ class SmartCachingAdapter(AsyncTreeAdapter):
             max_cache_depth: Maximum depth level to cache (0 = unlimited)
             max_path_depth: Maximum path components to cache (0 = unlimited)
             max_tracked_nodes: Maximum nodes to track (0 = unlimited)
+            enable_safe_mode: Enable tri-state tracking for LRU eviction awareness
         """
         super().__init__()
         self.base_adapter = base_adapter
@@ -122,7 +225,8 @@ class SmartCachingAdapter(AsyncTreeAdapter):
         self.max_tracked_nodes = max_tracked_nodes
 
         # Set up tracking if requested
-        self.tracker = TraversalTracker() if track_traversal else None
+        self.enable_safe_mode = enable_safe_mode
+        self.tracker = TraversalTracker(enable_safe_mode=enable_safe_mode) if track_traversal else None
 
         # Set up caching based on memory limit
         if max_memory_mb < 0:
@@ -130,12 +234,16 @@ class SmartCachingAdapter(AsyncTreeAdapter):
             self._cache = None
         elif max_memory_mb == 0:
             # Zero = unlimited cache
-            self._cache = _LruCacheStore(enable_protection=False)
+            self._cache = _LruCacheStore(
+                enable_protection=False,
+                eviction_callback=self._on_cache_eviction if enable_safe_mode else None
+            )
         else:
             # Positive = bounded cache
             self._cache = _LruCacheStore(
                 enable_protection=True,
-                max_memory_mb=max_memory_mb
+                max_memory_mb=max_memory_mb,
+                eviction_callback=self._on_cache_eviction if enable_safe_mode else None
             )
 
         # Statistics
@@ -436,6 +544,22 @@ class SmartCachingAdapter(AsyncTreeAdapter):
         """Get the depth at which a node was expanded."""
         return self.tracker.get_expansion_depth(path) if self.tracker else None
 
+    def get_discovery_state(self, path: Union[str, Path]) -> Optional[TrackingState]:
+        """Get tri-state discovery status (safe mode only).
+
+        Returns:
+            TrackingState if tracking enabled, None otherwise
+        """
+        return self.tracker.get_discovery_state(path) if self.tracker else None
+
+    def get_expansion_state(self, path: Union[str, Path]) -> Optional[TrackingState]:
+        """Get tri-state expansion status (safe mode only).
+
+        Returns:
+            TrackingState if tracking enabled, None otherwise
+        """
+        return self.tracker.get_expansion_state(path) if self.tracker else None
+
     def _should_use_cached_entry(self, entry) -> bool:
         """
         Check if a cached entry is still valid based on TTL.
@@ -471,6 +595,15 @@ class SmartCachingAdapter(AsyncTreeAdapter):
     async def get_depth(self, node: Any) -> int:
         """Get depth of a node (delegates to base adapter)."""
         return await self.base_adapter.get_depth(node)
+
+    def _on_cache_eviction(self, path: str):
+        """Callback when cache evicts an entry.
+
+        Args:
+            path: Path that was evicted from cache
+        """
+        if self.tracker and self.enable_safe_mode:
+            self.tracker.mark_evicted(path)
 
 
 # Convenience factory functions
