@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from dazzletreelib.aio.adapters import AsyncFileSystemAdapter, CompletenessAwareCacheAdapter
-from dazzletreelib.testing.fixtures import TestableCache
+from dazzletreelib.testing.fixtures import CacheTestHelper
 
 
 class TestNodeTrackingRegression(unittest.TestCase):
@@ -64,8 +64,8 @@ class TestNodeTrackingRegression(unittest.TestCase):
             async for child in cache_adapter.get_children(root_node):
                 children.append(child)
 
-            # Test with TestableCache
-            testable = TestableCache(cache_adapter)
+            # Test with CacheTestHelper
+            testable = CacheTestHelper(cache_adapter)
 
             # Root should be visited
             self.assertTrue(
@@ -115,8 +115,8 @@ class TestNodeTrackingRegression(unittest.TestCase):
             async for child in cache_adapter.get_children(root_node):
                 children.append(child)
 
-            # Test with TestableCache
-            testable = TestableCache(cache_adapter)
+            # Test with CacheTestHelper
+            testable = CacheTestHelper(cache_adapter)
 
             # Root should be visited
             self.assertTrue(
@@ -167,7 +167,7 @@ class TestNodeTrackingRegression(unittest.TestCase):
             async for child in cache_adapter.get_children(folder1_node):
                 level2_nodes.append(child)
 
-            testable = TestableCache(cache_adapter)
+            testable = CacheTestHelper(cache_adapter)
 
             # Root was visited (get_children called)
             self.assertTrue(testable.was_node_visited(self.test_path))

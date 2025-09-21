@@ -1,5 +1,6 @@
 """Testing utilities for DazzleTreeLib consumers."""
 
-from .fixtures import TestableCache
+from .fixtures import CacheTestHelper
+from .fixtures import CacheTestHelper as TestableCache  # Backward compatibility
 
-__all__ = ['TestableCache']
+__all__ = ['CacheTestHelper', 'TestableCache']

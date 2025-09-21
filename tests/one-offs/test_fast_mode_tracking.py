@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 from dazzletreelib.aio.adapters import AsyncFileSystemAdapter, CompletenessAwareCacheAdapter
 from dazzletreelib.aio import traverse_tree_async
-from dazzletreelib.testing.fixtures import TestableCache
+from dazzletreelib.testing.fixtures import CacheTestHelper
 
 async def test_fast_mode_tracking():
     """Test that node tracking works in fast mode."""
@@ -67,8 +67,8 @@ async def test_fast_mode_tracking():
                 async for child in cache_adapter.get_children(node):
                     queue.append((child, depth + 1))
 
-        # Test with TestableCache
-        testable = TestableCache(cache_adapter)
+        # Test with CacheTestHelper
+        testable = CacheTestHelper(cache_adapter)
 
         # Check that node tracking is working
         print("\n=== Fast Mode Node Tracking Test ===")

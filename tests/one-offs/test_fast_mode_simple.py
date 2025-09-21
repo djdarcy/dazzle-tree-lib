@@ -23,7 +23,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 from dazzletreelib.aio.adapters import AsyncFileSystemAdapter, CompletenessAwareCacheAdapter
-from dazzletreelib.testing.fixtures import TestableCache
+from dazzletreelib.testing.fixtures import CacheTestHelper
 
 async def test_fast_mode():
     """Test that node tracking works in fast mode."""
@@ -63,8 +63,8 @@ async def test_fast_mode():
         print(f"\nAfter get_children on root:")
         print(f"node_completeness: {cache_adapter.node_completeness}")
 
-        # Test with TestableCache
-        testable = TestableCache(cache_adapter)
+        # Test with CacheTestHelper
+        testable = CacheTestHelper(cache_adapter)
         root_visited = testable.was_node_visited(test_path)
 
         print(f"\nRoot visited: {root_visited}")

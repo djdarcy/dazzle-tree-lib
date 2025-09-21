@@ -9,7 +9,7 @@ from pathlib import Path
 from ..aio.adapters.cache_completeness_adapter import CacheEntry
 
 
-class TestableCache:
+class CacheTestHelper:
     """Public test fixture for cache verification.
     
     This class provides a stable testing interface for verifying cache behavior
@@ -18,7 +18,7 @@ class TestableCache:
     
     Example:
         scanner = FolderScanner(use_cache=True)
-        testable = TestableCache(scanner.cache)
+        testable = CacheTestHelper(scanner.cache)
         
         # Verify cache behavior
         summary = testable.get_summary()
