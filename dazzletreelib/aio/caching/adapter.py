@@ -235,12 +235,19 @@ class FilesystemCachingAdapter(CachingTreeAdapter):
                         if mtime_diff < 0.001:  # Less than 1ms difference
                             return children  # Cache hit with valid mtime
                         else:
-                            # Directory modified, invalidate cache
+                            # Directory modified, invalidate both caches
                             del self._mtime_cache[path]
+                            # Also invalidate the TTL cache
+                            if cache_key in self._cache:
+                                del self._cache[cache_key]
+                            return None  # Explicitly signal cache miss
                     except (OSError, IOError):
-                        # If we can't stat the path, invalidate the cache
+                        # If we can't stat the path, invalidate both caches
                         if path in self._mtime_cache:
                             del self._mtime_cache[path]
+                        if cache_key in self._cache:
+                            del self._cache[cache_key]
+                        return None  # Explicitly signal cache miss
             except (ValueError, TypeError):
                 # Not a valid path string, skip mtime check
                 pass
