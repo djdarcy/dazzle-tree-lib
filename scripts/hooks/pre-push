@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Pre-push hook for Folder DateTime Fix
+# Pre-push hook for DazzleTreeLib
 # Runs basic quality checks before pushing to remote
 #
 
@@ -23,7 +23,7 @@ echo ""
 # PYTHON SYNTAX CHECK
 # =============================================================================
 echo -e "${BLUE}Checking Python syntax...${NC}"
-python -m py_compile folder_datetime_fix/*.py scripts/*.py tests/*.py 2>/dev/null || {
+python -m py_compile dazzletreelib/*.py dazzletreelib/**/*.py tests/*.py 2>/dev/null || {
     echo -e "${RED}❌ Python syntax errors found${NC}"
     echo "Fix syntax errors before pushing"
     exit 1
@@ -34,11 +34,11 @@ echo -e "${GREEN}✓${NC} Python syntax check passed"
 # RUN TESTS
 # =============================================================================
 echo ""
-echo -e "${BLUE}Running tests...${NC}"
+echo -e "${BLUE}Running fast tests...${NC}"
 
-# Run unit tests
-if python -m pytest tests/ -q 2>/dev/null; then
-    echo -e "${GREEN}✓${NC} All tests passed"
+# Run fast tests using run_tests.py
+if python run_tests.py --fast 2>/dev/null; then
+    echo -e "${GREEN}✓${NC} All fast tests passed"
 else
     echo -e "${YELLOW}⚠${NC} Some tests failed"
     if [[ "$CURRENT_BRANCH" == "main" ]] || [[ "$CURRENT_BRANCH" == "master" ]]; then
@@ -46,6 +46,7 @@ else
         exit 1
     else
         echo "  Consider fixing tests before pushing"
+        echo "  Run 'python run_tests.py' for full test suite"
     fi
 fi
 
@@ -56,14 +57,14 @@ echo ""
 echo -e "${BLUE}Checking for debug statements...${NC}"
 
 # Check for pdb statements
-if grep -r "import pdb\|pdb\.set_trace()" folder_datetime_fix/ --include="*.py" 2>/dev/null; then
+if grep -r "import pdb\|pdb\.set_trace()" dazzletreelib/ --include="*.py" 2>/dev/null; then
     echo -e "${RED}❌ ERROR: Debugger statements found${NC}"
     echo "Remove all pdb statements before pushing"
     exit 1
 fi
 
 # Check for excessive print statements (warning only)
-print_count=$(grep -r "print(" folder_datetime_fix/ --include="*.py" 2>/dev/null | grep -v "#.*print(" | wc -l)
+print_count=$(grep -r "print(" dazzletreelib/ --include="*.py" 2>/dev/null | grep -v "#.*print(" | wc -l)
 if [ "$print_count" -gt 20 ]; then
     echo -e "${YELLOW}⚠${NC} Warning: Many print() statements found ($print_count)"
     echo "  Consider using logging instead"

@@ -1,20 +1,65 @@
 # DazzleTreeLib - Universal Tree Traversal Library
 
-DazzleTreeLib is a Python library providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with production-grade error handling and 4-5x caching speedup, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.
+[![Version](https://img.shields.io/github/v/release/djdarcy/DazzleTreeLib?sort=semver&color=blue)](https://github.com/djdarcy/DazzleTreeLib/releases)
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/djdarcy/DazzleTreeLib/blob/main/LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
 
-## ✨ Features
+DazzleTreeLib is the first Python library with a [universal adapter system](docs/universal-adapters.md) for tree traversal, providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with 4-5x caching speedup and production-grade error handling, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.
 
-- 🔄 **Universal Interface**: Single API for filesystem, database, API, and custom trees
-- ⚡ **Async Support**: Full async/await implementation (3.3x faster than sync)
-- 🎯 **Flexible Adapters**: Easy integration with any tree-like data structure
-- 💾 **Memory Efficient**: Streaming iterators for handling large trees
-- 🛡️ **Error Resilient**: Structured concurrency with proper error handling
-- 🔧 **Highly Extensible**: Custom adapters, collectors, and traversal strategies
-- 🚀 **High-Performance Caching**: 4-5x speedup with completeness-aware caching
+> **⚠️ Alpha Release**: This library is in active development. APIs may change between versions. We welcome feedback and contributions!
 
-## 📊 Performance
+## Why another tree library?
 
-### Honest Performance Assessment
+Have you ever needed to traverse different types of tree structures - filesystems, databases, API hierarchies, JSON documents - but ended up writing similar-but-different code for each one?
+
+Or struggled with existing libraries that are either too limited (filesystem-only) or too complex (full graph theory) when you just need solid tree traversal with good performance?
+
+What about when you need finer control - stopping at specific depths, filtering during traversal, caching results, or processing huge trees efficiently with async/await?
+
+DazzleTreeLib solves these problems with a [universal adapter system](docs/design-patterns/adapter-pattern-guide.md) that works with ANY tree structure while providing powerful traversal controls.
+
+## Features
+
+-  **Universal Interface**: One API for filesystem, database, API, or custom trees
+-  **Async Support**: Built-in parallelism, with full async/await implementation, and batching (3.3x faster than sync)
+-  **Flexible Adapters**: Easy integration with any tree-like data structure
+-  **Smart Traversal** - Stop at any depth, filter during traversal, control breadth
+-  **Memory Efficient**: Streaming iterators for handling large trees
+-  **Highly Extensible**: Custom adapters, collectors, and traversal strategies
+-  **High-Performance Intelligent Caching**: 4-5x speedup with completeness-aware caching
+
+- **Error Resilient & Production Ready** - Structured concurrency, proper error handling, streaming
+
+## What Makes DazzleTreeLib Different?
+
+### Quick Comparison
+
+| Feature | DazzleTreeLib | anytree | treelib | NetworkX |
+|---------|--------------|---------|---------|----------|
+| [Universal adapter system](docs/universal-adapters.md) | ✅ | ❌ | ❌ | ❌ |
+| [One API for any tree source](docs/design-patterns/adapter-pattern-guide.md) | ✅ | ❌ | ❌ | ❌ |
+| [Composable adapters](docs/design-patterns/composition-vs-inheritance.md) | ✅ | ❌ | ❌ | ❌ |
+| [Async/sync feature parity](docs/sync-async-compatibility.md) | ✅ | ❌ | ❌ | ❌ |
+| [Built-in caching](docs/caching-basics.md) | ✅ | ❌ | ❌ | ❌ |
+
+For more, see the [detailed comparison](docs/comparison.md) in [docs](/docs)
+
+✅ **DazzleTreeLib is Perfect for:**
+- Multi-source tree traversal (files + database + API)
+- Complex filtering and transformation logic
+- Async/await workflows with parallel processing
+- Large trees requiring streaming and caching
+- Custom tree structures needing standard traversal
+
+❌ **Consider alternatives for:**
+- Simple filesystem-only tasks (use `os.scandir` - 6-7x faster)
+- Pure graph algorithms (use [NetworkX](https://github.com/networkx/networkx))
+- In-memory-only trees (use [anytree](https://github.com/c0fec0de/anytree) or [treelib](https://github.com/caesar0301/treelib))
+
+## Performance
+
+### Benchmark Assessment (Sept. 2025)
 
 | Comparison | Performance | Best Use Case |
 |------------|-------------|---------------|
@@ -22,28 +67,15 @@ DazzleTreeLib is a Python library providing both synchronous and asynchronous tr
 | **DazzleTree vs os.scandir** | 6-7x slower | DazzleTree for flexibility, os.scandir for speed |
 | **Memory usage** | ~15MB base + 14MB/1K nodes | Acceptable for most applications |
 
-### When to Use DazzleTreeLib
 
-✅ **Use DazzleTreeLib for:**
-- Non-filesystem trees (databases, APIs, cloud storage)
-- Unified interface across different tree types
-- Complex filtering and transformation logic
-- Async/await workflows
-- Educational purposes and prototyping
-
-❌ **Use Native Python for:**
-- Simple filesystem traversal (use `os.scandir`)
-- Maximum performance requirements
-- Minimal memory footprint needs
-
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
 ```bash
 pip install dazzletreelib  # Coming soon to PyPI
 # For now, install from source:
-git clone https://github.com/yourusername/DazzleTreeLib.git
+git clone https://github.com/djdarcy/DazzleTreeLib.git
 cd DazzleTreeLib
 pip install -e .
 ```
@@ -80,7 +112,7 @@ async def main():
 asyncio.run(main())
 ```
 
-## 🎯 Real-World Examples
+## Real-World Examples
 
 ### Find Large Files Efficiently
 
@@ -166,7 +198,7 @@ async def fix_directory_timestamps(root_path):
 asyncio.run(fix_directory_timestamps("/path/to/fix"))
 ```
 
-## 🔄 Migrating from Sync to Async
+## Migrating from Sync to Async
 
 The async API mirrors the sync API closely, making migration straightforward:
 
@@ -194,7 +226,7 @@ Key differences:
 - Await any async operations on nodes
 - Wrap in `asyncio.run()` or existing async function
 
-## 📁 Advanced Features
+## Advanced Features
 
 ### Batched Parallel Processing
 
@@ -273,72 +305,109 @@ Key features:
 - **[Caching Basics](docs/caching-basics.md)** - Start here if new to caching concepts
 - **[Advanced Caching](docs/caching.md)** - Architecture details, comparisons with other libraries
 
-## 🏗️ Architecture
+## Architecture
 
 DazzleTreeLib uses a clean, modular architecture:
 
 ```
 dazzletreelib/
+├── version.py     # Centralized version management
 ├── sync/          # Synchronous implementation
-│   ├── core/      # Core abstractions
-│   ├── adapters/  # Tree adapters (filesystem, etc.)
-│   └── api.py     # High-level API
+│   ├── core/      # Core abstractions (Node, Adapter, Collector)
+│   ├── adapters/  # Tree adapters
+│   │   ├── filesystem.py      # FileSystem traversal
+│   │   ├── filtering.py       # FilteringWrapper
+│   │   └── smart_caching.py   # Caching with tracking
+│   └── api.py     # High-level sync API
 ├── aio/           # Asynchronous implementation
-│   ├── core/      # Async abstractions
-│   ├── adapters/  # Async adapters with batching
+│   ├── core/      # Async abstractions with batching
+│   ├── adapters/  # Async adapters
+│   │   ├── filesystem.py      # Async filesystem with parallel I/O
+│   │   ├── filtering.py       # Async filtering
+│   │   └── smart_caching.py   # Async caching adapter
 │   └── api.py     # High-level async API
-└── _common/       # Shared configuration
+└── _common/       # Shared configuration and constants
 ```
 
-## 🧪 Testing
+## Testing
 
 Run the test suite:
 
 ```bash
-# All tests
-pytest
+# Recommended: Full test suite with proper isolation
+python run_tests.py
 
-# Just the fast tests
-pytest -m "not slow"
+# Run specific test categories
+python run_tests.py --fast       # Quick tests only
+python run_tests.py --isolated   # Interaction-sensitive tests
+python run_tests.py --benchmarks # Performance benchmarks
 
-# With coverage
-pytest --cov=dazzletreelib
+# Manual pytest (for development)
+pytest -m "not slow and not benchmark"  # Fast tests only
+pytest -m benchmark                      # Benchmark tests only
+pytest -m "not interaction_sensitive"    # Skip isolation-required tests
+pytest --cov=dazzletreelib               # With coverage report
 ```
 
-## 📈 Benchmarks
+## Benchmarks
 
 Run performance benchmarks:
 
 ```bash
-pytest tests/test_performance_async.py -v -s
+# Run all benchmarks
+python benchmarks/accurate_performance_test.py
+
+# Compare with native Python methods
+python benchmarks/compare_file_search.py
+
+# Run pytest benchmarks
+pytest -m benchmark -v -s
 ```
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please ensure:
-- All tests pass
+- All tests pass (`python run_tests.py`)
 - Code is properly typed
 - Documentation is updated
 - Performance isn't regressed
 
-## 📜 License
+Note: Git hooks are configured to:
+- Update version automatically on commit
+- Run fast tests before push
+- Block commits with private files on public branches
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Like the project?
 
-## 🚦 Development Status
+[!["Buy Me A Coffee"](https://camo.githubusercontent.com/0b448aabee402aaf7b3b256ae471e7dc66bcf174fad7d6bb52b27138b2364e47/68747470733a2f2f7777772e6275796d6561636f666665652e636f6d2f6173736574732f696d672f637573746f6d5f696d616765732f6f72616e67655f696d672e706e67)](https://www.buymeacoffee.com/djdarcy)
 
-- ✅ **Stable**: Sync implementation (v0.5.0)
-- ✅ **Stable**: Async implementation (v0.6.0)
-- ✅ **Production Ready**: Used in production systems
+## Development Status
+
+- **Stable**: Sync implementation (v0.5.0)
+- **Stable**: Async implementation (v0.6.0)
+- **Production Ready**: Used in production systems (v0.10.0)
 - 🚧 **Coming Soon**: Additional adapters (S3, Database, API)
 
-## 🔗 Related Projects
+## Related Projects
 
-DazzleTreeLib is part of a comprehensive toolkit:
-- **folder-datetime-fix**: Directory timestamp correction tool (uses DazzleTreeLib)
-- **FileAudit**: File integrity and duplication detection
-- **TreeSync**: Directory synchronization utility
+DazzleTreeLib is used in a growing set of tools:
+- **[folder-datetime-fix](https://github.com/djdarcy/folder-datetime-fix)**: Directory timestamp correction tool (uses DazzleTreeLib)
+- **[preserve](https://github.com/djdarcy/preserve)**: File tracking for easy location recovery & backup (/w integrity and sync functionality)
 
----
+## Acknowledgments
 
-**Ready to traverse trees at lightning speed? Get started with DazzleTreeLib today!** 🚀
+- Inspired by excellent tree/graph libraries:
+  - [anytree](https://github.com/c0fec0de/anytree) - Python tree data structures with visualization
+  - [treelib](https://github.com/caesar0301/treelib) - Efficient tree structure and operations
+  - [NetworkX](https://github.com/networkx/networkx) - Extensive graph algorithms
+  - [pathlib](https://docs.python.org/3/library/pathlib.html) - Modern path handling in Python stdlib
+  - [graph-tool](https://git.skewed.de/count0/graph-tool) - Rust-based / Python graph analysis toolkit
+- Uses [aiofiles](https://github.com/Tinche/aiofiles) for async file operations
+- [GitRepoKit](https://github.com/djdarcy/git-repokit) - Automated version management system
+- Community contributors - Testing, feedback, and improvements
+
+## License
+
+DazzleTreeLib Copyright (C) 2025 Dustin Darcy
+
+MIT License - see [LICENSE](LICENSE) file for details.
