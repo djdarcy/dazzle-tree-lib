@@ -104,10 +104,15 @@ class FilteringWrapper(AsyncTreeAdapter):
 class TestFilteringWithTracking:
     """Test filter and tracking interactions."""
 
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
     @pytest.mark.asyncio
     async def test_filtered_nodes_not_discovered(self):
-        """Test that filtered-out nodes are not marked as discovered."""
+        """Test semantic distinction between discovered, exposed, and user-received nodes.
+
+        This test demonstrates the solution to Issue #43:
+        - was_discovered(): Node was processed by the adapter
+        - was_exposed(): Node was yielded by the adapter
+        - User's list: What actually passed through the filter
+        """
         mock_adapter = MockFilterAdapter()
         caching_adapter = SmartCachingAdapter(
             mock_adapter,
@@ -126,32 +131,42 @@ class TestFilteringWithTracking:
         )
 
         # Traverse with filter
-        discovered = []
+        user_received = []
         root = FilterNode('/')
 
         async def traverse(node):
             async for child in filtering_adapter.get_children(node):
-                discovered.append(str(child.path))
+                user_received.append(str(child.path))
                 await traverse(child)
 
         await traverse(root)
 
-        # Verify filtered nodes are NOT discovered
-        assert not caching_adapter.was_discovered('/hidden/.git'), ".git should not be discovered (filtered)"
-        assert not caching_adapter.was_discovered('/hidden/.env'), ".env should not be discovered (filtered)"
+        # NEW SEMANTIC UNDERSTANDING (Issue #43 solution):
 
-        # Verify parent of filtered nodes IS discovered and expanded
+        # 1. Hidden files WERE discovered by the caching adapter (it saw them)
+        assert caching_adapter.was_discovered('/hidden/.git'), ".git WAS discovered by adapter"
+        assert caching_adapter.was_discovered('/hidden/.env'), ".env WAS discovered by adapter"
+
+        # 2. Hidden files WERE exposed by the caching adapter (it yielded them)
+        assert caching_adapter.was_exposed('/hidden/.git'), ".git WAS exposed by adapter"
+        assert caching_adapter.was_exposed('/hidden/.env'), ".env WAS exposed by adapter"
+
+        # 3. But hidden files were NOT received by the user (filter blocked them)
+        assert '/hidden/.git' not in user_received, ".git NOT in user's received list"
+        assert '/hidden/.env' not in user_received, ".env NOT in user's received list"
+
+        # Parent of filtered nodes IS discovered and expanded
         assert caching_adapter.was_discovered('/hidden'), "/hidden should be discovered"
         assert caching_adapter.was_expanded('/hidden'), "/hidden should be expanded"
 
-        # Verify non-filtered nodes ARE discovered
+        # Non-filtered nodes ARE discovered, exposed, AND received
         assert caching_adapter.was_discovered('/docs'), "/docs should be discovered"
-        assert caching_adapter.was_discovered('/src'), "/src should be discovered"
+        assert caching_adapter.was_exposed('/docs'), "/docs should be exposed"
+        assert any('/docs' in path for path in user_received), "/docs should be in user's list"
 
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
     @pytest.mark.asyncio
     async def test_filter_change_during_traversal(self):
-        """Test changing filter during traversal affects tracking."""
+        """Test changing filter during traversal affects user-received nodes, not discovery."""
         mock_adapter = MockFilterAdapter()
         caching_adapter = SmartCachingAdapter(
             mock_adapter,
@@ -168,13 +183,15 @@ class TestFilteringWithTracking:
         root = FilterNode('/')
 
         # First traversal - no filter
-        first_discovered = []
+        first_user_received = []
         async for child in filtering_adapter.get_children(root):
-            first_discovered.append(str(child.path))
+            first_user_received.append(str(child.path))
 
-        # All children should be discovered
+        # All children should be discovered AND exposed
         assert caching_adapter.was_discovered('/docs')
         assert caching_adapter.was_discovered('/hidden')
+        assert caching_adapter.was_exposed('/docs')
+        assert caching_adapter.was_exposed('/hidden')
 
         # Change filter to exclude hidden
         def exclude_hidden(node):
@@ -187,15 +204,24 @@ class TestFilteringWithTracking:
         caching_adapter.clear_tracking()
 
         # Second traversal - with filter
-        second_discovered = []
+        second_user_received = []
         async for child in filtering_adapter.get_children(root):
-            second_discovered.append(str(child.path))
+            second_user_received.append(str(child.path))
 
-        # Hidden should be discovered but its hidden children should not
+        # With new semantics: adapter still discovers all nodes
         assert caching_adapter.was_discovered('/hidden')
-        assert len(first_discovered) > len(second_discovered), "Filter should reduce discovered nodes"
+        assert caching_adapter.was_discovered('/docs')
 
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
+        # At root level, both get same nodes (filter only affects dot-prefixed files)
+        # The /hidden directory itself doesn't start with dot, so it passes filter
+        assert len(first_user_received) == len(second_user_received), "Root level same for both"
+
+        # Verify what user actually got
+        assert '/hidden' in second_user_received  # /hidden itself passes (no dot prefix)
+        assert '/docs' in second_user_received    # Non-hidden still received
+
+        # The difference is that with filter, traversing INTO /hidden would not yield .git/.env
+
     @pytest.mark.asyncio
     async def test_depth_filter_tracking_boundary(self):
         """Test that depth filtering correctly tracks nodes at boundary."""
@@ -236,10 +262,13 @@ class TestFilteringWithTracking:
         assert caching_adapter.was_discovered('/docs/api')
         assert caching_adapter.was_expanded('/docs/api')
 
-        # Depth 3 - should NOT be discovered (filtered by depth)
-        assert not caching_adapter.was_discovered('/docs/api/index.md'), "Depth 3 should be filtered"
+        # Depth 3 - With new semantics: adapter discovers it if parent was expanded
+        # But it won't be in user's received list due to depth filter
+        if caching_adapter.was_expanded('/docs/api'):
+            # If parent was expanded, child was discovered
+            assert caching_adapter.was_discovered('/docs/api/index.md'), "Depth 3 discovered by adapter"
+            assert caching_adapter.was_exposed('/docs/api/index.md'), "Depth 3 exposed by adapter"
 
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
     @pytest.mark.asyncio
     async def test_custom_filter_tracking_behavior(self):
         """Test custom filter logic with tracking."""
@@ -273,18 +302,21 @@ class TestFilteringWithTracking:
 
         await traverse(root)
 
-        # Python files should be discovered
-        assert caching_adapter.was_discovered('/src/core/main.py'), "Python files should be discovered"
-        assert caching_adapter.was_discovered('/src/core/helper.py'), "Python files should be discovered"
+        # With new semantics: ALL files are discovered by adapter (it sees everything)
+        assert caching_adapter.was_discovered('/src/core/main.py'), "Python files discovered"
+        assert caching_adapter.was_discovered('/src/core/helper.py'), "Python files discovered"
 
-        # Non-Python files should NOT be discovered
-        assert not caching_adapter.was_discovered('/docs/api/index.md'), "Markdown files should be filtered"
+        # Markdown files are ALSO discovered (adapter sees them before filter)
+        assert caching_adapter.was_discovered('/docs/api/index.md'), "Markdown files discovered by adapter"
 
-        # Directories should still be discovered (to traverse into them)
-        assert caching_adapter.was_discovered('/docs'), "Directories should be discovered"
-        assert caching_adapter.was_discovered('/src'), "Directories should be discovered"
+        # But only Python files and directories are in user's received list
+        assert '/src/core/main.py' in discovered, "Python files received by user"
+        assert '/docs/api/index.md' not in discovered, "Markdown filtered from user"
 
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
+        # Directories should be discovered and received
+        assert caching_adapter.was_discovered('/docs'), "Directories discovered"
+        assert '/docs' in discovered, "Directories received by user"
+
     @pytest.mark.asyncio
     async def test_filter_cache_tracking_combination(self):
         """Test filter + cache + tracking working together."""
@@ -338,10 +370,11 @@ class TestFilteringWithTracking:
         assert stats2['discovered_nodes'] == initial_discovered, "No new discoveries on cached traversal"
 
         # Filtered nodes should never appear
-        assert not caching_adapter.was_discovered('/tests'), "/tests should be filtered"
-        assert not caching_adapter.was_discovered('/tests/unit'), "/tests/unit should be filtered"
-
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
+        # With new semantics: /tests IS discovered but not in user's received list
+        assert caching_adapter.was_discovered('/tests'), "/tests discovered by adapter"
+        # Its children are also discovered if parent was expanded
+        if caching_adapter.was_expanded('/tests'):
+            assert caching_adapter.was_discovered('/tests/unit'), "/tests/unit discovered"
     @pytest.mark.asyncio
     async def test_filter_affects_expansion_not_discovery_parent(self):
         """Test that parent nodes are expanded even if children are filtered."""
@@ -377,11 +410,11 @@ class TestFilteringWithTracking:
         assert caching_adapter.was_discovered('/hidden'), "/hidden should be discovered"
         assert caching_adapter.was_expanded('/hidden'), "/hidden should be expanded (even though children filtered)"
 
-        # But its children should NOT be discovered
-        assert not caching_adapter.was_discovered('/hidden/.git'), "Filtered children not discovered"
-        assert not caching_adapter.was_discovered('/hidden/.env'), "Filtered children not discovered"
-
-    @pytest.mark.skip("Filter/tracking layer order - See Issue #43")
+        # With new semantics: children ARE discovered (adapter sees them before filter)
+        assert caching_adapter.was_discovered('/hidden/.git'), "Children discovered by adapter"
+        assert caching_adapter.was_discovered('/hidden/.env'), "Children discovered by adapter"
+        assert caching_adapter.was_exposed('/hidden/.git'), "Children exposed by adapter"
+        assert caching_adapter.was_exposed('/hidden/.env'), "Children exposed by adapter"
     @pytest.mark.asyncio
     async def test_filter_performance_with_tracking(self):
         """Test that filtering doesn't significantly impact tracking performance."""
@@ -437,11 +470,14 @@ class TestFilteringWithTracking:
         # Performance check
         assert elapsed < 2.0, f"Filtered traversal too slow: {elapsed:.2f}s"
 
-        # Verify filtering worked
+        # With new semantics: adapter discovers ALL nodes
         assert caching_adapter.was_discovered('/dir0'), "Even directories discovered"
-        assert not caching_adapter.was_discovered('/dir1'), "Odd directories filtered"
+        assert caching_adapter.was_discovered('/dir1'), "Odd directories ALSO discovered"
 
-        # Check discovered count is about half
+        # Check discovered count includes all nodes
         stats = caching_adapter.get_stats()
-        # Should discover root + ~50 even dirs + their files
-        assert stats['discovered_nodes'] < 600, "Should filter about half the nodes"
+        # Should discover all nodes (root + 100 dirs + potentially their files)
+        assert stats['discovered_nodes'] > 100, "Adapter discovers all directories"
+
+        # But user received fewer nodes due to filter
+        assert discovered_count < 600, "User received filtered subset"

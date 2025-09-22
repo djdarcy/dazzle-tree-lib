@@ -97,6 +97,8 @@ class TraversalTracker:
         # Record expansion depth (may overwrite if expanded multiple times)
         self.expanded_depths[path_str] = depth
 
+    # Removed track_exposure - not needed since SmartCachingAdapter exposes everything it discovers
+
     def was_discovered(self, path: Union[str, Path]) -> bool:
         """Check if a node was encountered during traversal."""
         return str(path) in self.discovered
@@ -105,6 +107,10 @@ class TraversalTracker:
         """Check if get_children() was called on this node."""
         return str(path) in self.expanded
 
+    def was_exposed(self, path: Union[str, Path]) -> bool:
+        """For SmartCachingAdapter, exposed is same as discovered."""
+        return self.was_discovered(path)
+
     def get_discovery_depth(self, path: Union[str, Path]) -> Optional[int]:
         """Get the depth at which a node was first discovered."""
         return self.discovered_depths.get(str(path))
@@ -112,6 +118,10 @@ class TraversalTracker:
     def get_expansion_depth(self, path: Union[str, Path]) -> Optional[int]:
         """Get the depth at which a node was expanded."""
         return self.expanded_depths.get(str(path))
+
+    def get_exposure_depth(self, path: Union[str, Path]) -> Optional[int]:
+        """For SmartCachingAdapter, exposure depth is discovery depth."""
+        return self.get_discovery_depth(path)
 
     def get_discovered_count(self) -> int:
         """Get number of discovered nodes."""
@@ -149,6 +159,16 @@ class TraversalTracker:
         else:
             return TrackingState.KNOWN_ABSENT
 
+    def get_exposure_state(self, path: Union[str, Path]) -> TrackingState:
+        """Get tri-state exposure status for safe mode.
+
+        For SmartCachingAdapter, exposure state equals discovery state.
+
+        Returns:
+            TrackingState indicating if node was exposed, not exposed, or unknown
+        """
+        return self.get_discovery_state(path)
+
     def mark_evicted(self, path: Union[str, Path]):
         """Mark a node's tracking data as evicted (safe mode only).
 
@@ -167,6 +187,8 @@ class TraversalTracker:
             self.evicted_expanded.add(path_str)
             self.expanded.discard(path_str)
             self.expanded_depths.pop(path_str, None)
+
+        # No need to track exposure eviction - exposure equals discovery
 
     def clear(self):
         """Reset all tracking for a new traversal."""
@@ -313,7 +335,7 @@ class SmartCachingAdapter(AsyncTreeAdapter):
             if cached_entry and self._should_use_cached_entry(cached_entry):
                 # Cache hit
                 self.cache_hits += 1
-                # Track cached children as discovered
+                # Track cached children as discovered and exposed
                 for child in cached_entry.data:
                     if self.tracker:
                         if hasattr(child, 'path'):
@@ -321,6 +343,7 @@ class SmartCachingAdapter(AsyncTreeAdapter):
                         else:
                             child_path = str(child).replace('\\', '/')
                         self.tracker.track_discovery(child_path, depth + 1)  # Children are at depth+1
+                        # No need to track exposure - SmartCachingAdapter exposes everything it discovers
                     yield child
                 return
 
@@ -339,6 +362,7 @@ class SmartCachingAdapter(AsyncTreeAdapter):
                 else:
                     child_path = str(child).replace('\\', '/')
                 self.tracker.track_discovery(child_path, depth + 1)  # Children are at depth+1
+                # No need to track exposure - SmartCachingAdapter exposes everything it discovers
 
             yield child
 
@@ -383,6 +407,39 @@ class SmartCachingAdapter(AsyncTreeAdapter):
             True if the node was expanded, False otherwise
         """
         return self.tracker.was_expanded(path) if self.tracker else False
+
+    def was_exposed(self, path: Union[str, Path]) -> bool:
+        """
+        Check if this node was yielded to the layer above.
+
+        For SmartCachingAdapter, this is equivalent to was_discovered()
+        because this adapter doesn't filter - it yields everything it sees.
+        The distinction only matters for adapters that filter internally.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            True if the node was yielded upward, False otherwise
+        """
+        # SmartCachingAdapter yields everything it discovers
+        return self.was_discovered(path)
+
+    def was_filtered(self, path: Union[str, Path]) -> bool:
+        """
+        Check if this node was discovered but not exposed (i.e., filtered).
+
+        For SmartCachingAdapter, this always returns False because
+        this adapter doesn't filter - everything discovered is also exposed.
+
+        Args:
+            path: Path to check
+
+        Returns:
+            Always False for SmartCachingAdapter
+        """
+        # SmartCachingAdapter doesn't filter anything
+        return False
 
     async def invalidate(self, path: Union[str, Path] = None, deep: bool = False) -> int:
         """
