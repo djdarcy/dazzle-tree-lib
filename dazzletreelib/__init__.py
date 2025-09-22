@@ -2,58 +2,30 @@
 
 DazzleTreeLib provides a generic, extensible framework for traversing and operating on
 any tree structure - filesystem, XML, JSON, databases, or custom data structures.
+
+Choose your implementation:
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Synchronous:
+    from dazzletreelib.sync import traverse_tree
+
+Asynchronous:
+    from dazzletreelib.aio import traverse_tree_async
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Both implementations share the same concepts but are optimized for their
+respective execution models. Pick the one that fits your application.
 """
 
-__version__ = "0.1.0"
+# Import version from centralized location
+from .version import __version__, VERSION, BASE_VERSION, PIP_VERSION
 
-# Core abstractions
-from .core.node import TreeNode
-from .core.adapter import TreeAdapter
-from .core.traverser import TreeTraverser
-from .core.collector import DataCollector
+# Re-export submodules for convenient access
+from . import sync
+from . import aio
 
-# Configuration and planning
-from .config import (
-    TraversalConfig,
-    DataRequirement,
-    TraversalStrategy,
-    CacheCompleteness,
-)
-from .planning import ExecutionPlan, CapabilityMismatchError
-
-# High-level API
-from .api import traverse_tree, collect_tree_data, count_nodes, find_nodes
-
-# Common adapters
-from .adapters.filesystem import FileSystemAdapter, FileSystemNode
-
+# Users must explicitly choose their implementation
 __all__ = [
-    # Version
     "__version__",
-    
-    # Core abstractions
-    "TreeNode",
-    "TreeAdapter", 
-    "TreeTraverser",
-    "DataCollector",
-    
-    # Configuration
-    "TraversalConfig",
-    "DataRequirement",
-    "TraversalStrategy",
-    "CacheCompleteness",
-    
-    # Planning
-    "ExecutionPlan",
-    "CapabilityMismatchError",
-    
-    # High-level API
-    "traverse_tree",
-    "collect_tree_data",
-    "count_nodes",
-    "find_nodes",
-    
-    # Filesystem adapter
-    "FileSystemAdapter",
-    "FileSystemNode",
+    "sync",
+    "aio",
 ]

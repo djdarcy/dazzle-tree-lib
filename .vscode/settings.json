@@ -1,0 +1,60 @@
+{
+  // Python interpreter configuration
+  "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe",
+  
+  // Terminal activation
+  "python.terminal.activateEnvironment": true,
+  
+  // Testing configuration
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "tests",
+    "-v"
+  ],
+  
+  // Linting and formatting
+  "python.linting.enabled": true,
+  "python.linting.flake8Enabled": true,
+  "python.linting.pylintEnabled": false,
+  "python.formatting.provider": "black",
+  
+  // Type checking
+  "python.linting.mypyEnabled": true,
+  
+  // Editor settings
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.rulers": [88],  // Black's default line length
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+  
+  // File exclusions
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/.hg/store/**": true,
+    "**/.dart_tool": true,
+    "**/.git/**": true,
+    "**/node_modules/**": true,
+    "**/.vscode/**": true,
+    "venv/**": true,
+    "**/__pycache__/**": true,
+    "**/*.pyc": true
+  },
+  
+  // Search exclusions
+  "search.exclude": {
+    "venv": true,
+    "**/__pycache__": true,
+    "*.pyc": true
+  },
+  
+  // Files to hide in explorer
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true
+  }
+}
