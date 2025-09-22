@@ -11,11 +11,15 @@ from ..aio.adapters.cache_completeness_adapter import CacheEntry
 
 class CacheTestHelper:
     """Public test fixture for cache verification.
-    
+
     This class provides a stable testing interface for verifying cache behavior
     without exposing internal implementation details. It's designed for use in
     test suites of projects that consume DazzleTreeLib.
-    
+
+    Note: Despite the name containing "Test", this is NOT a pytest test class.
+    It's a helper utility for testing. The __init__ constructor prevents pytest
+    from collecting it as a test class.
+
     Example:
         scanner = FolderScanner(use_cache=True)
         testable = CacheTestHelper(scanner.cache)
