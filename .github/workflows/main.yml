@@ -113,7 +113,13 @@ jobs:
 
     - name: Run tests with coverage
       run: |
-        pytest --cov=dazzletreelib --cov-report=xml --cov-report=html --cov-report=term
+        # Use run_tests.py to ensure consistent test exclusions
+        # Add coverage options via pytest addopts or command override
+        python -m pytest \
+          --ignore=tests/one-offs --ignore=tests/POC --ignore=tests/performance \
+          -m "not slow and not interaction_sensitive" \
+          --cov=dazzletreelib --cov-report=xml --cov-report=html --cov-report=term \
+          --tb=short --durations=10 -v
       continue-on-error: true
 
     - name: Upload coverage reports
