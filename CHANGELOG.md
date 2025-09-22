@@ -5,6 +5,51 @@ All notable changes to DazzleTreeLib will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2025-09-22
+
+### 🎉 First Public Release
+
+This is the first public release of DazzleTreeLib after 4 months of development and battle-testing in production environments.
+
+### ✨ New Features
+- **Coverage Report Management** - New `scripts/get-coverage.py` script for GitHub Actions coverage reports
+  - Download coverage artifacts from CI runs
+  - Organize reports with YYYY-MM-DD__hh-mm-ss naming convention
+  - List recent runs with coverage artifacts
+  - Open reports in browser
+  - Clean up old reports with configurable retention
+
+### 🐛 Bug Fixes
+- **Fixed cache invalidation bug** - Properly extract Path from tuple cache keys and invalidate both mtime and TTL caches (Issue #45)
+- **Fixed Windows metadata collection** - Isolated is_mount() exception handling to prevent missing metadata fields
+- **Fixed symlink traversal** - Symlinks now correctly appear as nodes but aren't traversed when follow_symlinks=False (Issue #47)
+
+### 📊 CI/CD Improvements
+- **100% CI pass rate achieved** across all platforms (Ubuntu, Windows, macOS)
+- Excluded performance tests from CI runs (unreliable in shared environments)
+- Fixed coverage job to properly exclude one-offs, POC, and performance tests
+- All tests now pass reliably across Python 3.9-3.12
+
+### 📚 Documentation
+- Created comprehensive first release notes covering entire feature set
+- Updated README badges to use correct repository name
+- Added MIT License with proper copyright
+
+## [0.10.1] - 2025-09-22
+
+### 🔧 CI/CD Infrastructure
+- **GitHub Actions CI** - Complete multi-platform testing pipeline
+- **Cross-platform support** - Ubuntu, Windows, macOS testing matrices
+- **Python version matrix** - Testing against Python 3.9, 3.10, 3.11, 3.12
+- **Test categorization** - Separated unit, integration, performance, and interaction-sensitive tests
+- **Coverage reporting** - Automated coverage collection and reporting
+- **Lint and type checking** - Black, flake8, mypy integration
+
+### 🐛 Bug Fixes
+- **Fixed test organization** - Moved edge case tests to appropriate categories
+- **Fixed performance test thresholds** - Adjusted for CI environment variability
+- **Fixed symlink test assumptions** - Corrected test expectations for symlink behavior
+
 ## [0.10.0] - 2025-09-22
 
 ### 🎯 Major Features
