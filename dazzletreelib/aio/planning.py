@@ -5,7 +5,7 @@ traversal, filtering, and data collection operations.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Any, AsyncIterator, Callable, Set
+from typing import Optional, Any, AsyncIterator, Callable, Set, Tuple, List
 from pathlib import Path
 
 from .core import (
@@ -142,7 +142,7 @@ class AsyncExecutionPlan:
         self,
         root: Any,
         max_depth: Optional[int] = None
-    ) -> AsyncIterator[tuple[Any, Any]]:
+    ) -> AsyncIterator[Tuple[Any, Any]]:
         """Execute the traversal plan.
         
         Args:
@@ -222,7 +222,7 @@ class AsyncExecutionPlan:
         self,
         root: Any,
         max_depth: Optional[int] = None
-    ) -> list[tuple[Any, Any]]:
+    ) -> List[Tuple[Any, Any]]:
         """Execute plan and collect all results.
         
         Args:
@@ -245,7 +245,7 @@ class AsyncExecutionPlan:
         """
         return self.stats.copy()
     
-    async def validate_adapter_capabilities(self) -> list[str]:
+    async def validate_adapter_capabilities(self) -> List[str]:
         """Validate adapter supports required capabilities.
         
         Returns:

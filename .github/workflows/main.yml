@@ -5,22 +5,29 @@ on:
     branches: [ main, dev, staging ]
   pull_request:
     branches: [ main, dev ]
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.9', '3.10', '3.11', '3.12']
-    
+        exclude:
+          # Exclude some combinations to save CI minutes
+          - os: macos-latest
+            python-version: '3.9'
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-    
+
     - name: Cache dependencies
       uses: actions/cache@v4
       with:
@@ -28,84 +35,172 @@ jobs:
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt', '**/setup.py', '**/pyproject.toml') }}
         restore-keys: |
           ${{ runner.os }}-pip-
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -e ".[dev]"
-    
+
+    - name: Run tests
+      run: |
+        # Note: We skip performance tests in CI (no --all flag)
+        # Performance tests are unreliable in shared CI environments
+        python run_tests.py
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
+        path: |
+          test_runs/
+          *.log
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev]
+        pip install flake8 black mypy
+
+    - name: Check code formatting with black
+      run: |
+        black --check dazzletreelib tests
+      continue-on-error: true  # Don't fail build on formatting issues
+
     - name: Lint with flake8
       run: |
         # Stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 dazzletreelib tests --count --select=E9,F63,F7,F82 --show-source --statistics
         # Exit-zero treats all errors as warnings
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 dazzletreelib tests --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
       continue-on-error: true
-    
-    - name: Type check with mypy
+
+    - name: Type checking with mypy
       run: |
-        mypy repokit/ --ignore-missing-imports
+        mypy dazzletreelib --ignore-missing-imports
       continue-on-error: true
-    
-    - name: Run unit tests
-      run: |
-        python tests/run_tests.py --unit --coverage
-    
-    - name: Run integration tests
-      run: |
-        python tests/run_tests.py --integration
-    
-    - name: Run CLI tests (without GitHub API)
-      run: |
-        python tests/run_tests.py --cli
-      
-  github-integration:
+
+  coverage:
     runs-on: ubuntu-latest
-    needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
-    
+    needs: test  # Run after tests to ensure code works
+
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up Python 3.11
+
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: 3.11
-    
+        python-version: '3.11'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e ".[dev]"
-    
-    - name: Run GitHub API tests
-      env:
-        GITHUB_TOKEN: ${{ secrets.REPOKIT_TEST_TOKEN }}
+        pip install -e .[dev]
+        pip install pytest-cov
+
+    - name: Run tests with coverage
       run: |
-        python tests/run_tests.py --github
-      if: env.GITHUB_TOKEN != ''
-      
-  build:
+        # Use run_tests.py to ensure consistent test exclusions
+        # Add coverage options via pytest addopts or command override
+        python -m pytest \
+          --ignore=tests/one-offs --ignore=tests/POC --ignore=tests/performance \
+          -m "not slow and not interaction_sensitive" \
+          --cov=dazzletreelib --cov-report=xml --cov-report=html --cov-report=term \
+          --tb=short --durations=10 -v
+      continue-on-error: true
+
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
+
+    - name: Upload coverage to Codecov (optional)
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+      continue-on-error: true  # Don't fail if codecov is down
+
+  benchmarks:
     runs-on: ubuntu-latest
-    needs: test
-    
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Performance tests are informational only - GitHub Actions runners have variable performance
+    continue-on-error: true
+
     steps:
     - uses: actions/checkout@v4
-    
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .[dev]
+
+    - name: Run benchmarks (informational only)
+      run: |
+        echo "⚠️ NOTE: Performance results on GitHub Actions are not reliable due to shared infrastructure"
+        echo "These results are for informational purposes only"
+        echo "Run benchmarks locally for accurate measurements"
+        echo ""
+        python benchmarks/accurate_performance_test.py || echo "Benchmark completed with warnings"
+      continue-on-error: true
+
+    - name: Store benchmark results
+      uses: actions/upload-artifact@v4
+      if: always()  # Store results even if benchmarks fail
+      with:
+        name: benchmark-results-informational
+        path: |
+          benchmarks/*.txt
+          benchmarks/*.log
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, lint]  # Only build if tests and linting pass
+
+    steps:
+    - uses: actions/checkout@v4
+
     - name: Set up Python 3.9
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: 3.9
-    
+
     - name: Install build dependencies
       run: |
         python -m pip install --upgrade pip
         pip install build wheel
-    
+
     - name: Build package
       run: |
         python -m build
-    
+
     - name: Check package
       run: |
         pip install twine
         twine check dist/*
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist
+        path: dist/

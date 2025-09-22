@@ -224,18 +224,44 @@ async def test_filesystem_mtime_invalidation():
         assert cached_adapter.cache_hits == 1
         
         # Modify directory by adding a file
-        (test_dir / "file3.txt").touch()
-        
-        # Force directory mtime to update on Windows
-        # Windows sometimes doesn't update directory mtime when files are added
+        new_file = test_dir / "file3.txt"
+        new_file.write_text("test content")
+
+        # Force directory mtime to update on ALL platforms
         import os
-        os.utime(test_dir, None)  # Touch the directory itself
-        
-        # Small delay to ensure mtime changes
-        await asyncio.sleep(0.05)
-        
+        import time
+        # Touch the directory multiple times to ensure mtime changes
+        current_time = time.time()
+        os.utime(test_dir, (current_time, current_time))
+
+        # Small delay to ensure mtime changes and file is visible
+        await asyncio.sleep(0.5)  # Increased from 0.3s for CI robustness
+
+        # Verify the file was actually created with retry logic
+        for i in range(5):  # Increased retries
+            if new_file.exists():
+                break
+            await asyncio.sleep(0.1)
+        assert new_file.exists(), f"New file {new_file} was not created after retries"
+
+        # Force filesystem sync on Unix systems
+        if hasattr(os, 'sync'):
+            os.sync()
+
+        # Additional safety: Force another directory mtime update
+        later_time = time.time()
+        os.utime(test_dir, (later_time, later_time))
+        await asyncio.sleep(0.1)  # Brief pause after mtime update
+
         # Third scan (should detect change and rescan)
         children3 = await collect_children(cached_adapter, test_node)
+
+        # Debug: Show what files we actually found if assertion fails
+        if len(children3) != 3:
+            file_names = [child.path.name for child in children3]
+            expected_files = ["file1.txt", "file2.txt", "file3.txt"]
+            print(f"DEBUG: Expected 3 files {expected_files}, got {len(children3)} files: {file_names}")
+
         assert len(children3) == 3
         
         # Should have had a cache miss due to mtime change

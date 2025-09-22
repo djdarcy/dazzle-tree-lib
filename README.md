@@ -1,8 +1,8 @@
 # DazzleTreeLib - Universal Tree Traversal Library
 
-[![Version](https://img.shields.io/github/v/release/djdarcy/DazzleTreeLib?sort=semver&color=blue)](https://github.com/djdarcy/DazzleTreeLib/releases)
-[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/djdarcy/DazzleTreeLib/blob/main/LICENSE)
+[![Version](https://img.shields.io/github/v/release/djdarcy/dazzle-tree-lib?sort=semver&color=blue)](https://github.com/djdarcy/dazzle-tree-lib/releases)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/djdarcy/dazzle-tree-lib/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
 
 DazzleTreeLib is the first Python library with a [universal adapter system](docs/universal-adapters.md) for tree traversal, providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with 4-5x caching speedup and production-grade error handling, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.

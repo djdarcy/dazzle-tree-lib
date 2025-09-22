@@ -7,6 +7,7 @@ All collectors work with async streams for memory efficiency.
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, Any, List, Dict, Optional, Set
 from pathlib import Path
+import asyncio
 
 
 class AsyncDataCollector(ABC):

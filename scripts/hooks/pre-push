@@ -36,8 +36,8 @@ echo -e "${GREEN}✓${NC} Python syntax check passed"
 echo ""
 echo -e "${BLUE}Running fast tests...${NC}"
 
-# Run fast tests using run_tests.py
-if python run_tests.py --fast 2>/dev/null; then
+# Run fast tests using run_tests.py (default runs fast tests only)
+if python run_tests.py 2>/dev/null; then
     echo -e "${GREEN}✓${NC} All fast tests passed"
 else
     echo -e "${YELLOW}⚠${NC} Some tests failed"

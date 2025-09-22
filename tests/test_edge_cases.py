@@ -410,18 +410,68 @@ class TestSymlinks(unittest.TestCase):
         """Create test directory with symlinks."""
         self.test_dir = tempfile.mkdtemp()
         self.test_path = Path(self.test_dir)
-        
-        # Create target directory and file
-        (self.test_path / "target_dir").mkdir()
-        (self.test_path / "target_dir" / "file.txt").write_text("target")
-        (self.test_path / "target_file.txt").write_text("target file")
-        
-        # Create symlinks
+
+        # Create scan directory and separate target directory
+        # This structure ensures symlink targets are OUTSIDE the scan path
+        self.scan_dir = self.test_path / "scan_root"
+        self.scan_dir.mkdir()
+
+        # Create target directory and file OUTSIDE scan directory
+        target_dir = self.test_path / "target_dir"
+        target_dir.mkdir()
+        (target_dir / "file.txt").write_text("target")
+        target_file = self.test_path / "target_file.txt"
+        target_file.write_text("target file")
+
+        # Also create some regular files in scan directory for comparison
+        (self.scan_dir / "regular_file.txt").write_text("regular")
+
+        # Create symlinks INSIDE scan directory pointing OUTSIDE
         try:
-            (self.test_path / "link_to_dir").symlink_to(self.test_path / "target_dir")
-            (self.test_path / "link_to_file").symlink_to(self.test_path / "target_file.txt")
-        except OSError:
+            link_dir = self.scan_dir / "link_to_dir"
+            link_file = self.scan_dir / "link_to_file"
+
+            # Ensure clean state - remove any existing files with these names
+            if link_dir.exists():
+                link_dir.unlink()
+            if link_file.exists():
+                link_file.unlink()
+
+            # Create symlinks with absolute targets for CI reliability
+            target_dir_abs = target_dir.resolve()
+            target_file_abs = target_file.resolve()
+
+            link_dir.symlink_to(target_dir_abs, target_is_directory=True)
+            link_file.symlink_to(target_file_abs, target_is_directory=False)
+
+            # Delay and retry to ensure filesystem consistency
+            import time
+            time.sleep(0.2)  # Increased from 0.1s for CI robustness
+
+            # Retry verification for CI environments
+            for attempt in range(5):  # Increased attempts
+                if link_dir.is_symlink() and link_file.is_symlink():
+                    break
+                time.sleep(0.1)
+
+        except (OSError, NotImplementedError) as e:
+            # Debug info for CI
+            import os
+            if os.environ.get('GITHUB_ACTIONS'):
+                print(f"DEBUG: Symlink creation failed: {e}")
+                print(f"DEBUG: Scan directory contents: {list(self.scan_dir.iterdir())}")
             self.skipTest("Cannot create symlinks on this system")
+
+        # Verify symlinks were actually created
+        if not (link_dir.is_symlink() and link_file.is_symlink()):
+            # Debug info for CI
+            import os
+            if os.environ.get('GITHUB_ACTIONS'):
+                print(f"DEBUG: Symlink verification failed")
+                print(f"DEBUG: link_dir.is_symlink(): {link_dir.is_symlink()}")
+                print(f"DEBUG: link_file.is_symlink(): {link_file.is_symlink()}")
+                print(f"DEBUG: Scan directory contents: {[f.name for f in self.scan_dir.iterdir()]}")
+            self.skipTest("Symlinks not supported on this system")
         
     def tearDown(self):
         """Clean up test directory."""
@@ -431,22 +481,69 @@ class TestSymlinks(unittest.TestCase):
     def test_symlinks_not_followed(self):
         """Test that symlinks are not followed by default."""
         adapter = FileSystemAdapter(follow_symlinks=False)
-        root = FileSystemNode(self.test_path)
-        
+        root = FileSystemNode(self.scan_dir)  # Use scan_dir not test_path
+
         nodes = list(traverse_tree(root, adapter))
         names = [n.path.name for n in nodes]
-        
-        # Should see the symlinks but not traverse into them
+
+        # Debug output for CI
+        import os
+        if os.environ.get('GITHUB_ACTIONS'):
+            print(f"DEBUG: Scan directory: {self.scan_dir}")
+            print(f"DEBUG: Scan contents on disk: {[f.name for f in self.scan_dir.iterdir()]}")
+            print(f"DEBUG: Test directory structure: {self.test_path}")
+            print(f"DEBUG: Node names from traversal: {names}")
+            print(f"DEBUG: Node paths from traversal: {[str(n.path) for n in nodes]}")
+
+        # Should see the symlinks themselves
         self.assertIn("link_to_dir", names)
         self.assertIn("link_to_file", names)
+
+        # Should see regular file in scan directory
+        self.assertIn("regular_file.txt", names)
+
+        # Should NOT see contents from OUTSIDE scan directory (symlink targets)
+        self.assertNotIn("file.txt", names)  # Inside target_dir (outside scan)
+        self.assertNotIn("target_file.txt", names)  # Outside scan directory
+        self.assertNotIn("target_dir", names)  # Outside scan directory
         
-        # Should not see contents of linked directory
-        self.assertNotIn("file.txt", names)  # Inside target_dir
-        
+    def test_symlinks_colocated_with_targets(self):
+        """Test behavior when symlinks and their targets are in the same directory.
+
+        This is an edge case but the behavior should be predictable:
+        - With follow_symlinks=False: Both symlinks AND regular dirs are traversed
+        - The symlink doesn't 'hide' or prevent traversal of the actual directory
+        """
+        # Create a test structure with symlinks and targets in SAME directory
+        colocated_dir = self.test_path / "colocated"
+        colocated_dir.mkdir()
+
+        # Create a regular directory and file
+        (colocated_dir / "real_dir").mkdir()
+        (colocated_dir / "real_dir" / "real_file.txt").write_text("real content")
+
+        # Create symlink to the real_dir within same directory
+        link = colocated_dir / "link_to_real"
+        link.symlink_to((colocated_dir / "real_dir").resolve(), target_is_directory=True)
+
+        adapter = FileSystemAdapter(follow_symlinks=False)
+        root = FileSystemNode(colocated_dir)
+
+        nodes = list(traverse_tree(root, adapter))
+        names = [n.path.name for n in nodes]
+
+        # Both the symlink AND the real directory should appear
+        self.assertIn("link_to_real", names)  # The symlink itself
+        self.assertIn("real_dir", names)      # The actual directory
+        self.assertIn("real_file.txt", names) # Contents of real_dir (it's traversed)
+
+        # This demonstrates that symlinks don't "block" traversal of their targets
+        # when both are in the scan path
+
     def test_symlinks_followed(self):
         """Test following symlinks when enabled."""
         adapter = FileSystemAdapter(follow_symlinks=True)
-        root = FileSystemNode(self.test_path)
+        root = FileSystemNode(self.scan_dir)  # Use scan_dir not test_path
         
         # Note: This could create infinite loops with circular symlinks
         # In production, would need cycle detection

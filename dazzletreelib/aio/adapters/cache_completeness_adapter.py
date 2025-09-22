@@ -300,7 +300,7 @@ class CompletenessAwareCacheAdapter(CacheKeyMixin, AsyncTreeAdapter):
             self.max_tracked_nodes = max_tracked_nodes
         else:
             # Fast mode: Use regular dict for maximum performance
-            self.cache: dict[Tuple, CacheEntry] = {}
+            self.cache: Dict[Tuple, CacheEntry] = {}
             self.node_completeness = {}  # Path → depth mapping
             # Disable all limits
             self.max_memory = float('inf')

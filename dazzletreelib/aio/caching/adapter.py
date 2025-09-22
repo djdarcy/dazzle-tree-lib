@@ -216,22 +216,42 @@ class FilesystemCachingAdapter(CachingTreeAdapter):
     def _check_cache(self, cache_key: Any) -> Optional[List[AsyncTreeNode]]:
         """
         Check cache with mtime-based invalidation.
-        
+
         For filesystem nodes, validates that the directory hasn't been
         modified since the cache entry was created.
         """
-        # First try mtime-based cache for Path objects
-        if isinstance(cache_key, Path) and cache_key in self._mtime_cache:
-            children, cached_mtime = self._mtime_cache[cache_key]
+        # Extract the path from the cache key tuple (it's the last element)
+        if isinstance(cache_key, tuple) and len(cache_key) == 4:
+            path_str = cache_key[-1]  # The node identifier
             try:
-                # Check if directory has been modified
-                current_mtime = cache_key.stat().st_mtime
-                if current_mtime == cached_mtime:
-                    return children  # Cache hit with valid mtime
-            except (OSError, IOError):
-                # If we can't stat the path, invalidate the cache
-                del self._mtime_cache[cache_key]
-        
+                path = Path(path_str)
+                if path in self._mtime_cache:
+                    children, cached_mtime = self._mtime_cache[path]
+                    try:
+                        # Check if directory has been modified
+                        current_mtime = path.stat().st_mtime
+                        # Use small tolerance for filesystem timestamp precision issues
+                        mtime_diff = abs(current_mtime - cached_mtime)
+                        if mtime_diff < 0.001:  # Less than 1ms difference
+                            return children  # Cache hit with valid mtime
+                        else:
+                            # Directory modified, invalidate both caches
+                            del self._mtime_cache[path]
+                            # Also invalidate the TTL cache
+                            if cache_key in self._cache:
+                                del self._cache[cache_key]
+                            return None  # Explicitly signal cache miss
+                    except (OSError, IOError):
+                        # If we can't stat the path, invalidate both caches
+                        if path in self._mtime_cache:
+                            del self._mtime_cache[path]
+                        if cache_key in self._cache:
+                            del self._cache[cache_key]
+                        return None  # Explicitly signal cache miss
+            except (ValueError, TypeError):
+                # Not a valid path string, skip mtime check
+                pass
+
         # Fall back to TTL-based cache
         return super()._check_cache(cache_key)
     
@@ -239,15 +259,17 @@ class FilesystemCachingAdapter(CachingTreeAdapter):
         """
         Update cache with mtime tracking for filesystem paths.
         """
-        # Store in mtime cache if it's a Path
-        if isinstance(cache_key, Path):
+        # Extract the path from the cache key tuple and store in mtime cache
+        if isinstance(cache_key, tuple) and len(cache_key) == 4:
+            path_str = cache_key[-1]  # The node identifier
             try:
-                mtime = cache_key.stat().st_mtime
-                self._mtime_cache[cache_key] = (children, mtime)
-            except (OSError, IOError):
-                # If we can't get mtime, fall back to TTL cache
+                path = Path(path_str)
+                mtime = path.stat().st_mtime
+                self._mtime_cache[path] = (children, mtime)
+            except (ValueError, TypeError, OSError, IOError):
+                # If we can't get mtime, fall back to TTL cache only
                 pass
-        
+
         # Always update TTL cache as fallback
         super()._update_cache(cache_key, children)
     

@@ -59,14 +59,24 @@ class AsyncTreeAdapter(ABC):
     
     def __init__(self, max_concurrent: int = 100):
         """Initialize adapter with concurrency control.
-        
+
         Args:
             max_concurrent: Maximum concurrent I/O operations
         """
         self.max_concurrent = max_concurrent
-        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self._semaphore = None  # Create lazily in async context
         self._capabilities = self._define_capabilities()
-    
+
+    @property
+    def semaphore(self):
+        """Get semaphore for concurrency control.
+
+        Creates the semaphore on first access from async context.
+        """
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self.max_concurrent)
+        return self._semaphore
+
     @abstractmethod
     async def get_children(self, node: Any) -> AsyncIterator[Any]:
         """Get children of a node as an async stream.
@@ -157,7 +167,7 @@ class AsyncTreeAdapter(ABC):
         """
         return {
             'max_concurrent': self.max_concurrent,
-            'available_permits': self.semaphore._value if hasattr(self.semaphore, '_value') else None,
+            'available_permits': self._semaphore._value if self._semaphore and hasattr(self._semaphore, '_value') else None,
         }
     
     async def close(self):
