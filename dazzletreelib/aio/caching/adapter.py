@@ -226,7 +226,9 @@ class FilesystemCachingAdapter(CachingTreeAdapter):
             try:
                 # Check if directory has been modified
                 current_mtime = cache_key.stat().st_mtime
-                if current_mtime == cached_mtime:
+                # Use small tolerance for filesystem timestamp precision issues
+                mtime_diff = abs(current_mtime - cached_mtime)
+                if mtime_diff < 0.001:  # Less than 1ms difference
                     return children  # Cache hit with valid mtime
             except (OSError, IOError):
                 # If we can't stat the path, invalidate the cache

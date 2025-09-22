@@ -472,10 +472,18 @@ class TestSymlinks(unittest.TestCase):
         """Test that symlinks are not followed by default."""
         adapter = FileSystemAdapter(follow_symlinks=False)
         root = FileSystemNode(self.test_path)
-        
+
         nodes = list(traverse_tree(root, adapter))
         names = [n.path.name for n in nodes]
-        
+
+        # Debug output for CI
+        import os
+        if os.environ.get('GITHUB_ACTIONS'):
+            print(f"DEBUG: Test directory: {self.test_path}")
+            print(f"DEBUG: Directory contents on disk: {[f.name for f in self.test_path.iterdir()]}")
+            print(f"DEBUG: Node names from traversal: {names}")
+            print(f"DEBUG: Node paths from traversal: {[str(n.path) for n in nodes]}")
+
         # Should see the symlinks but not traverse into them
         self.assertIn("link_to_dir", names)
         self.assertIn("link_to_file", names)

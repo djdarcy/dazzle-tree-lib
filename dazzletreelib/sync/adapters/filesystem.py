@@ -93,8 +93,13 @@ class FileSystemNode(TreeNode):
                 'is_file': stat.S_ISREG(mode),
                 'is_dir': stat.S_ISDIR(mode),
                 'is_link': stat.S_ISLNK(mode) if hasattr(stat, 'S_ISLNK') else False,
-                'is_mount': self.path.is_mount() if hasattr(self.path, 'is_mount') else False,
             })
+
+            # Mount point detection (may not work on all systems)
+            try:
+                metadata['is_mount'] = self.path.is_mount() if hasattr(self.path, 'is_mount') else False
+            except Exception:
+                metadata['is_mount'] = False
             
             # Permissions (Unix-style, may not work on Windows)
             try:
