@@ -193,12 +193,19 @@ class TestSyncTraversal(TraversalContract):
             assert len(metadata_list) == 9  # Total nodes in test tree
             
             # Verify metadata structure
-            for metadata in metadata_list:
-                assert 'path' in metadata
-                assert 'name' in metadata
+            for i, metadata in enumerate(metadata_list):
+                # CI debugging: print metadata fields if missing required ones
+                import os
+                if os.environ.get('GITHUB_ACTIONS') and (
+                    'is_file' not in metadata or 'is_dir' not in metadata
+                ):
+                    print(f"DEBUG CI metadata #{i}: {metadata}")
+
+                assert 'path' in metadata, f"Missing 'path' in metadata #{i}: {metadata}"
+                assert 'name' in metadata, f"Missing 'name' in metadata #{i}: {metadata}"
                 # Sync uses is_file/is_dir instead of type
-                assert 'is_file' in metadata
-                assert 'is_dir' in metadata
+                assert 'is_file' in metadata, f"Missing 'is_file' in metadata #{i}: {metadata}"
+                assert 'is_dir' in metadata, f"Missing 'is_dir' in metadata #{i}: {metadata}"
         
         finally:
             self.teardown_test_tree(root)
@@ -312,8 +319,13 @@ class TestAsyncTraversal(TraversalContract):
             assert len(metadata_list) == 9  # Total nodes in test tree
             
             # Verify metadata structure
-            for metadata in metadata_list:
-                assert 'path' in metadata
+            for i, metadata in enumerate(metadata_list):
+                # CI debugging: print metadata fields if issues
+                import os
+                if os.environ.get('GITHUB_ACTIONS') and 'path' not in metadata:
+                    print(f"DEBUG CI async metadata #{i}: {metadata}")
+
+                assert 'path' in metadata, f"Missing 'path' in async metadata #{i}: {metadata}"
                 assert 'name' in metadata
                 # Async uses type field
                 assert 'type' in metadata

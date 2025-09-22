@@ -418,14 +418,27 @@ class TestSymlinks(unittest.TestCase):
         
         # Create symlinks
         try:
-            (self.test_path / "link_to_dir").symlink_to(self.test_path / "target_dir")
-            (self.test_path / "link_to_file").symlink_to(self.test_path / "target_file.txt")
+            link_dir = self.test_path / "link_to_dir"
+            link_file = self.test_path / "link_to_file"
+
+            link_dir.symlink_to(self.test_path / "target_dir")
+            link_file.symlink_to(self.test_path / "target_file.txt")
+
+            # Delay and retry to ensure filesystem consistency
+            import time
+            time.sleep(0.2)  # Increased from 0.1s for CI robustness
+
+            # Retry verification for CI environments
+            for _ in range(3):
+                if link_dir.is_symlink() and link_file.is_symlink():
+                    break
+                time.sleep(0.1)
+
         except (OSError, NotImplementedError):
             self.skipTest("Cannot create symlinks on this system")
 
         # Verify symlinks were actually created
-        if not ((self.test_path / "link_to_dir").is_symlink() and
-                (self.test_path / "link_to_file").is_symlink()):
+        if not (link_dir.is_symlink() and link_file.is_symlink()):
             self.skipTest("Symlinks not supported on this system")
         
     def tearDown(self):

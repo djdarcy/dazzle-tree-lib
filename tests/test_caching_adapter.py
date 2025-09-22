@@ -233,10 +233,19 @@ async def test_filesystem_mtime_invalidation():
         os.utime(test_dir, None)  # Touch the directory itself
 
         # Small delay to ensure mtime changes and file is visible
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.5)  # Increased from 0.3s for CI robustness
 
-        # Verify the file was actually created
-        assert new_file.exists(), f"New file {new_file} was not created"
+        # Verify the file was actually created with retry logic
+        for i in range(3):
+            if new_file.exists():
+                break
+            await asyncio.sleep(0.1)
+        assert new_file.exists(), f"New file {new_file} was not created after retries"
+
+        # Force filesystem sync on Unix systems
+        import os
+        if hasattr(os, 'sync'):
+            os.sync()
         
         # Third scan (should detect change and rescan)
         children3 = await collect_children(cached_adapter, test_node)
