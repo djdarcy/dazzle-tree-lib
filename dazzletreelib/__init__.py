@@ -16,7 +16,8 @@ Both implementations share the same concepts but are optimized for their
 respective execution models. Pick the one that fits your application.
 """
 
-__version__ = "0.9.6"  # Added SmartCachingAdapter with clean semantics (Issue #38)
+# Import version from centralized location
+from .version import __version__, VERSION, BASE_VERSION, PIP_VERSION
 
 # Re-export submodules for convenient access
 from . import sync

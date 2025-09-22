@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dazzletreelib"
-version = "0.9.6"
+dynamic = ["version"]
 description = "High-performance tree traversal library with blazing fast async support"
 readme = "README.md"
 license = {text = "MIT"}
@@ -50,6 +50,9 @@ Issues = "https://github.com/yourusername/DazzleTreeLib/issues"
 where = ["."]
 include = ["dazzletreelib*"]
 exclude = ["tests*", "examples*", "docs*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "dazzletreelib.version.PIP_VERSION"}
 
 [tool.pytest.ini_options]
 minversion = "7.0"
