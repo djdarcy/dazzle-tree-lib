@@ -1,6 +1,6 @@
 # DazzleTreeLib - Universal Tree Traversal Library
 
-DazzleTreeLib is a Python library providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with production-grade error handling and 55x caching speedup, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.
+DazzleTreeLib is a Python library providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with production-grade error handling and 4-5x caching speedup, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.
 
 ## ✨ Features
 
@@ -10,7 +10,7 @@ DazzleTreeLib is a Python library providing both synchronous and asynchronous tr
 - 💾 **Memory Efficient**: Streaming iterators for handling large trees
 - 🛡️ **Error Resilient**: Structured concurrency with proper error handling
 - 🔧 **Highly Extensible**: Custom adapters, collectors, and traversal strategies
-- 🚀 **High-Performance Caching**: 85-90% speedup with completeness-aware caching
+- 🚀 **High-Performance Caching**: 4-5x speedup with completeness-aware caching
 
 ## 📊 Performance
 
@@ -19,7 +19,7 @@ DazzleTreeLib is a Python library providing both synchronous and asynchronous tr
 | Comparison | Performance | Best Use Case |
 |------------|-------------|---------------|
 | **DazzleTree async vs sync** | 3.3x faster | When using DazzleTreeLib |
-| **DazzleTree vs os.scandir** | 2-3x slower | DazzleTree for flexibility, os.scandir for speed |
+| **DazzleTree vs os.scandir** | 6-7x slower | DazzleTree for flexibility, os.scandir for speed |
 | **Memory usage** | ~15MB base + 14MB/1K nodes | Acceptable for most applications |
 
 ### When to Use DazzleTreeLib
@@ -233,7 +233,7 @@ python_files = await filter_tree_async(root, predicate=is_python_file)
 
 ### High-Performance Caching
 
-DazzleTreeLib features a sophisticated **completeness-aware caching system** that provides 85-90% performance improvements with intelligent memory management.
+DazzleTreeLib features a sophisticated **completeness-aware caching system** that provides 4-5x performance improvements with intelligent memory management.
 
 ```python
 from dazzletreelib.aio.adapters import CompletenessAwareCacheAdapter
@@ -246,7 +246,7 @@ cached_adapter = CompletenessAwareCacheAdapter(
     validation_ttl_seconds=5
 )
 
-# Fast mode - maximum performance (85-90% faster)
+# Fast mode - maximum performance (4-5x faster on repeated traversals)
 fast_adapter = CompletenessAwareCacheAdapter(
     base_adapter,
     enable_oom_protection=False
@@ -256,7 +256,7 @@ fast_adapter = CompletenessAwareCacheAdapter(
 async for node in traverse_tree_async(root, adapter=cached_adapter):
     process(node)
 
-# Second traversal: uses cache (85-90% faster!)
+# Second traversal: uses cache (4-5x faster!)
 async for node in traverse_tree_async(root, adapter=cached_adapter):
     process(node)
 ```
