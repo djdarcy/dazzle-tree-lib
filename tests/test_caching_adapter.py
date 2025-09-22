@@ -224,15 +224,16 @@ async def test_filesystem_mtime_invalidation():
         assert cached_adapter.cache_hits == 1
         
         # Modify directory by adding a file
-        (test_dir / "file3.txt").touch()
-        
+        new_file = test_dir / "file3.txt"
+        new_file.write_text("test content")
+
         # Force directory mtime to update on Windows
         # Windows sometimes doesn't update directory mtime when files are added
         import os
         os.utime(test_dir, None)  # Touch the directory itself
-        
-        # Small delay to ensure mtime changes
-        await asyncio.sleep(0.05)
+
+        # Small delay to ensure mtime changes and file is visible
+        await asyncio.sleep(0.1)
         
         # Third scan (should detect change and rescan)
         children3 = await collect_children(cached_adapter, test_node)

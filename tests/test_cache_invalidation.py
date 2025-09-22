@@ -317,6 +317,7 @@ class TestCacheInvalidation:
         for path in cache_adapter.node_completeness:
             assert "tracked" not in path
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific path test")
     async def test_invalidate_windows_paths(self):
         """Test that invalidation handles Windows-style paths correctly."""
         base_adapter = MockAdapter()

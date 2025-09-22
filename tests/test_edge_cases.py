@@ -420,8 +420,12 @@ class TestSymlinks(unittest.TestCase):
         try:
             (self.test_path / "link_to_dir").symlink_to(self.test_path / "target_dir")
             (self.test_path / "link_to_file").symlink_to(self.test_path / "target_file.txt")
-        except OSError:
+        except (OSError, NotImplementedError):
             self.skipTest("Cannot create symlinks on this system")
+
+        # Verify symlinks were actually created
+        if not (self.test_path / "link_to_dir").is_symlink():
+            self.skipTest("Symlinks not supported on this system")
         
     def tearDown(self):
         """Clean up test directory."""
