@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎉 First Public Release
 
-This is the first public release of DazzleTreeLib after 4 months of development and battle-testing in production environments.
+This is the first public release of DazzleTreeLib after several months of development and battle-testing against [folder-datetime-fix](https://github.com/djdarcy/folder-datetime-fix).
 
 ### ✨ New Features
 - **Coverage Report Management** - New `scripts/get-coverage.py` script for GitHub Actions coverage reports
@@ -31,8 +31,8 @@ This is the first public release of DazzleTreeLib after 4 months of development 
 - All tests now pass reliably across Python 3.9-3.12
 
 ### 📚 Documentation
-- Created comprehensive first release notes covering entire feature set
-- Updated README badges to use correct repository name
+- Created detailed first release notes covering entire feature set
+- Updated README badges to use correct repository info
 - Added MIT License with proper copyright
 
 ## [0.10.1] - 2025-09-22
