@@ -11,6 +11,7 @@ from typing import Any, AsyncIterator, Optional
 from pathlib import Path
 
 from dazzletreelib.aio.adapters.smart_caching import SmartCachingAdapter
+from dazzletreelib.aio.adapters.filtering import FilteringWrapper
 from dazzletreelib.aio.core import AsyncTreeAdapter
 
 
@@ -79,26 +80,7 @@ class MockFilterAdapter:
         return None
 
 
-class FilteringWrapper(AsyncTreeAdapter):
-    """Simple filtering wrapper for tests."""
-
-    def __init__(self, base_adapter, node_filter=None):
-        self.base_adapter = base_adapter
-        self.node_filter = node_filter
-
-    async def get_children(self, node):
-        """Get filtered children."""
-        async for child in self.base_adapter.get_children(node):
-            if self.node_filter is None or self.node_filter(child):
-                yield child
-
-    async def get_depth(self, node):
-        """Delegate to base adapter."""
-        return await self.base_adapter.get_depth(node)
-
-    async def get_parent(self, node):
-        """Delegate to base adapter."""
-        return await self.base_adapter.get_parent(node)
+# FilteringWrapper is now imported from production code above
 
 
 class TestFilteringWithTracking:
@@ -141,17 +123,19 @@ class TestFilteringWithTracking:
 
         await traverse(root)
 
-        # NEW SEMANTIC UNDERSTANDING (Issue #43 solution):
+        # CORRECT SEMANTIC UNDERSTANDING (Issue #43 solution):
 
         # 1. Hidden files WERE discovered by the caching adapter (it saw them)
         assert caching_adapter.was_discovered('/hidden/.git'), ".git WAS discovered by adapter"
         assert caching_adapter.was_discovered('/hidden/.env'), ".env WAS discovered by adapter"
 
-        # 2. Hidden files WERE exposed by the caching adapter (it yielded them)
-        assert caching_adapter.was_exposed('/hidden/.git'), ".git WAS exposed by adapter"
-        assert caching_adapter.was_exposed('/hidden/.env'), ".env WAS exposed by adapter"
+        # 2. Hidden files were FILTERED by the FilteringWrapper
+        assert filtering_adapter.was_filtered('/hidden/.git'), ".git WAS filtered"
+        assert filtering_adapter.was_filtered('/hidden/.env'), ".env WAS filtered"
 
-        # 3. But hidden files were NOT received by the user (filter blocked them)
+        # 3. Hidden files were NOT exposed to the user (blocked by filter)
+        assert not filtering_adapter.was_exposed('/hidden/.git'), ".git NOT exposed"
+        assert not filtering_adapter.was_exposed('/hidden/.env'), ".env NOT exposed"
         assert '/hidden/.git' not in user_received, ".git NOT in user's received list"
         assert '/hidden/.env' not in user_received, ".env NOT in user's received list"
 
@@ -161,7 +145,8 @@ class TestFilteringWithTracking:
 
         # Non-filtered nodes ARE discovered, exposed, AND received
         assert caching_adapter.was_discovered('/docs'), "/docs should be discovered"
-        assert caching_adapter.was_exposed('/docs'), "/docs should be exposed"
+        assert filtering_adapter.was_exposed('/docs'), "/docs should be exposed through filter"
+        assert not filtering_adapter.was_filtered('/docs'), "/docs should NOT be filtered"
         assert any('/docs' in path for path in user_received), "/docs should be in user's list"
 
     @pytest.mark.asyncio
@@ -187,11 +172,12 @@ class TestFilteringWithTracking:
         async for child in filtering_adapter.get_children(root):
             first_user_received.append(str(child.path))
 
-        # All children should be discovered AND exposed
+        # All children should be discovered by caching adapter
         assert caching_adapter.was_discovered('/docs')
         assert caching_adapter.was_discovered('/hidden')
-        assert caching_adapter.was_exposed('/docs')
-        assert caching_adapter.was_exposed('/hidden')
+        # And exposed through filter (no filter active)
+        assert filtering_adapter.was_exposed('/docs')
+        assert filtering_adapter.was_exposed('/hidden')
 
         # Change filter to exclude hidden
         def exclude_hidden(node):
@@ -262,12 +248,13 @@ class TestFilteringWithTracking:
         assert caching_adapter.was_discovered('/docs/api')
         assert caching_adapter.was_expanded('/docs/api')
 
-        # Depth 3 - With new semantics: adapter discovers it if parent was expanded
+        # Depth 3 - adapter discovers it if parent was expanded
         # But it won't be in user's received list due to depth filter
         if caching_adapter.was_expanded('/docs/api'):
             # If parent was expanded, child was discovered
             assert caching_adapter.was_discovered('/docs/api/index.md'), "Depth 3 discovered by adapter"
-            assert caching_adapter.was_exposed('/docs/api/index.md'), "Depth 3 exposed by adapter"
+            # But filtered by depth filter
+            assert filtering_adapter.was_filtered('/docs/api/index.md'), "Depth 3 filtered by depth"
 
     @pytest.mark.asyncio
     async def test_custom_filter_tracking_behavior(self):
@@ -410,11 +397,12 @@ class TestFilteringWithTracking:
         assert caching_adapter.was_discovered('/hidden'), "/hidden should be discovered"
         assert caching_adapter.was_expanded('/hidden'), "/hidden should be expanded (even though children filtered)"
 
-        # With new semantics: children ARE discovered (adapter sees them before filter)
+        # Children ARE discovered by caching adapter
         assert caching_adapter.was_discovered('/hidden/.git'), "Children discovered by adapter"
         assert caching_adapter.was_discovered('/hidden/.env'), "Children discovered by adapter"
-        assert caching_adapter.was_exposed('/hidden/.git'), "Children exposed by adapter"
-        assert caching_adapter.was_exposed('/hidden/.env'), "Children exposed by adapter"
+        # But filtered by the FilteringWrapper
+        assert filtering_adapter.was_filtered('/hidden/.git'), "Children filtered"
+        assert filtering_adapter.was_filtered('/hidden/.env'), "Children filtered"
     @pytest.mark.asyncio
     async def test_filter_performance_with_tracking(self):
         """Test that filtering doesn't significantly impact tracking performance."""

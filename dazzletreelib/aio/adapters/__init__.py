@@ -15,6 +15,7 @@ from .cache_completeness_adapter import (
     CompletenessAwareCacheAdapter,
 )
 from .depth_tracking_adapter import DepthTrackingAdapter
+from .filtering import FilteringWrapper
 
 __all__ = [
     'AsyncFileSystemNode',
@@ -24,4 +25,5 @@ __all__ = [
     'CacheEntry',
     'CompletenessAwareCacheAdapter',
     'DepthTrackingAdapter',
+    'FilteringWrapper',
 ]
