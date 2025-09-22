@@ -160,23 +160,27 @@ class FileSystemAdapter(TreeAdapter):
     
     def get_children(self, node: FileSystemNode) -> Iterator[FileSystemNode]:
         """Get child nodes (files and subdirectories)."""
+        # Don't traverse into symlinks when follow_symlinks=False
+        if not self.follow_symlinks and node.path.is_symlink():
+            return  # Symlinks are treated as leaf nodes when not following
+
         if not node.path.is_dir():
             return  # No children for files
-        
+
         try:
             # Use iterdir for lazy iteration
             for child_path in sorted(node.path.iterdir()):
                 # Skip hidden files if configured
                 if not self.include_hidden and child_path.name.startswith('.'):
                     continue
-                
-                # Skip symlinks if not following
-                if not self.follow_symlinks and child_path.is_symlink():
-                    continue
-                
+
+                # Always yield all children, including symlinks
+                # When follow_symlinks=False, symlinks will be treated as leaf nodes
+                # (their children won't be traversed due to the check at the top of this method)
+
                 # Create child node with parent reference
                 yield FileSystemNode(child_path, parent=node)
-                
+
         except PermissionError:
             # Can't read directory, no children to yield
             pass
