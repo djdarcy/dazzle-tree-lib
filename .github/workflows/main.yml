@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, dev, staging ]
+    branches: [ main, staging ]  # Removed dev - has its own workflow
   pull_request:
-    branches: [ main, dev ]
+    branches: [ main ]  # PRs to main only
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
@@ -96,6 +96,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     needs: test  # Run after tests to ensure code works
+    if: github.ref == 'refs/heads/main'  # Only run coverage on main branch
 
     steps:
     - uses: actions/checkout@v4
