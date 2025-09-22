@@ -421,24 +421,46 @@ class TestSymlinks(unittest.TestCase):
             link_dir = self.test_path / "link_to_dir"
             link_file = self.test_path / "link_to_file"
 
-            link_dir.symlink_to(self.test_path / "target_dir")
-            link_file.symlink_to(self.test_path / "target_file.txt")
+            # Ensure clean state - remove any existing files with these names
+            if link_dir.exists():
+                link_dir.unlink()
+            if link_file.exists():
+                link_file.unlink()
+
+            # Create symlinks with absolute targets for CI reliability
+            target_dir_abs = (self.test_path / "target_dir").resolve()
+            target_file_abs = (self.test_path / "target_file.txt").resolve()
+
+            link_dir.symlink_to(target_dir_abs, target_is_directory=True)
+            link_file.symlink_to(target_file_abs, target_is_directory=False)
 
             # Delay and retry to ensure filesystem consistency
             import time
             time.sleep(0.2)  # Increased from 0.1s for CI robustness
 
             # Retry verification for CI environments
-            for _ in range(3):
+            for attempt in range(5):  # Increased attempts
                 if link_dir.is_symlink() and link_file.is_symlink():
                     break
                 time.sleep(0.1)
 
-        except (OSError, NotImplementedError):
+        except (OSError, NotImplementedError) as e:
+            # Debug info for CI
+            import os
+            if os.environ.get('GITHUB_ACTIONS'):
+                print(f"DEBUG: Symlink creation failed: {e}")
+                print(f"DEBUG: Directory contents: {list(self.test_path.iterdir())}")
             self.skipTest("Cannot create symlinks on this system")
 
         # Verify symlinks were actually created
         if not (link_dir.is_symlink() and link_file.is_symlink()):
+            # Debug info for CI
+            import os
+            if os.environ.get('GITHUB_ACTIONS'):
+                print(f"DEBUG: Symlink verification failed")
+                print(f"DEBUG: link_dir.is_symlink(): {link_dir.is_symlink()}")
+                print(f"DEBUG: link_file.is_symlink(): {link_file.is_symlink()}")
+                print(f"DEBUG: Directory contents: {[f.name for f in self.test_path.iterdir()]}")
             self.skipTest("Symlinks not supported on this system")
         
     def tearDown(self):
