@@ -175,10 +175,24 @@ class TestModeSwitching:
             state = adapter2.get_discovery_state(path)
             assert state == TrackingState.KNOWN_PRESENT, f"{path} should be known present"
 
+    @pytest.mark.benchmark
+    @pytest.mark.interaction_sensitive
     @pytest.mark.asyncio
     async def test_fast_mode_performance_advantage(self):
-        """Test that fast mode is faster than safe mode."""
+        """Test that fast mode is faster than safe mode.
+
+        This test measures relative performance between fast and safe modes.
+        It's sensitive to test interaction - prior tests creating many nodes
+        can cause memory fragmentation that affects timing measurements.
+        """
         import time
+        import gc
+
+        # Clean up any residual state from previous tests
+        gc.collect()
+        gc.collect()  # Force collection of all generations
+        gc.collect()
+
         tree = LargeTreeAdapter(breadth=20, depth=3)  # Medium-sized tree
 
         # Fast mode

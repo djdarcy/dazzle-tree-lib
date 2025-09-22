@@ -18,7 +18,7 @@ import argparse
 from pathlib import Path
 
 
-def run_tests(include_slow=False):
+def run_tests(include_slow=False, include_interaction_sensitive=False):
     """Run the test suite."""
     cmd = [
         sys.executable, "-m", "pytest",
@@ -29,16 +29,28 @@ def run_tests(include_slow=False):
         "-v"                         # Verbose output
     ]
 
+    markers = []
     if not include_slow:
         # Exclude performance tests directory when not including slow tests
         cmd.extend(["--ignore=tests/performance"])
-        cmd.extend(["-m", "not slow"])
-        print("Running all FUNCTIONAL tests (excluding performance, slow, one-offs, and POC)...")
-        print("=" * 60)
+        markers.append("not slow")
+
+    if not include_interaction_sensitive:
+        markers.append("not interaction_sensitive")
+
+    if markers:
+        cmd.extend(["-m", " and ".join(markers)])
+
+    if not include_slow and not include_interaction_sensitive:
+        print("Running all FUNCTIONAL tests (excluding interaction-sensitive, slow, one-offs, and POC)...")
+    elif include_slow and not include_interaction_sensitive:
+        print("Running tests including slow (but not interaction-sensitive tests)...")
+    elif not include_slow and include_interaction_sensitive:
+        print("Running tests including interaction-sensitive (but not slow directory)...")
     else:
-        print("Running ALL tests including performance suite (but not one-offs or POC)...")
-        print("=" * 60)
-    
+        print("Running ALL tests including slow and interaction-sensitive...")
+    print("=" * 60)
+
     result = subprocess.run(cmd, cwd=Path(__file__).parent)
     return result.returncode
 
@@ -148,18 +160,60 @@ The slow tests should be run:
 """)
 
 
+def run_isolated_tests():
+    """Run interaction-sensitive tests in isolation."""
+    print("Running INTERACTION-SENSITIVE tests in isolation...")
+    print("=" * 60)
+    print("These tests are affected by prior test execution and need clean state.")
+    print()
+    cmd = [
+        sys.executable, "-m", "pytest",
+        "-m", "interaction_sensitive",
+        "--tb=short",
+        "-xvs"  # Stop on first failure, verbose, no capture
+    ]
+    result = subprocess.run(cmd, cwd=Path(__file__).parent)
+    return result.returncode
+
+
+def run_benchmark_tests():
+    """Run all benchmark tests (may include interaction-sensitive ones)."""
+    print("Running BENCHMARK tests...")
+    print("=" * 60)
+    print("Note: Some benchmarks are interaction-sensitive and may show skewed results")
+    print("if run after other tests. Use --isolated for accurate measurements.")
+    print()
+    cmd = [
+        sys.executable, "-m", "pytest",
+        "-m", "benchmark",
+        "--tb=short",
+        "-v"
+    ]
+    result = subprocess.run(cmd, cwd=Path(__file__).parent)
+    return result.returncode
+
+
 def main():
     parser = argparse.ArgumentParser(description="Test runner for DazzleTreeLib")
     parser.add_argument("--slow", action="store_true", help="Show info about slow tests")
-    parser.add_argument("--all", action="store_true", help="Run all tests including slow ones")
-    
+    parser.add_argument("--all", action="store_true", help="Run all tests including slow and interaction-sensitive")
+    parser.add_argument("--isolated", action="store_true", help="Run interaction-sensitive tests in isolation")
+    parser.add_argument("--benchmarks", action="store_true", help="Run all benchmark tests")
+    parser.add_argument("--with-sensitive", action="store_true", help="Include interaction-sensitive tests in normal run")
+
     args = parser.parse_args()
-    
+
     if args.slow:
         show_slow_tests()
         return 0
-    
-    return run_tests(include_slow=args.all)
+
+    if args.isolated:
+        return run_isolated_tests()
+
+    if args.benchmarks:
+        return run_benchmark_tests()
+
+    return run_tests(include_slow=args.all, include_interaction_sensitive=(args.all or args.with_sensitive))
 
 
 if __name__ == "__main__":
