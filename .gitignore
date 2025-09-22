@@ -140,6 +140,9 @@ credentials.json
 
 # Add custom patterns below
 
+# Test output files
+*test*result*.txt
+
 
 # Adoption-specific sensitive files
 Clipboard Text*
