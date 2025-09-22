@@ -424,7 +424,8 @@ class TestSymlinks(unittest.TestCase):
             self.skipTest("Cannot create symlinks on this system")
 
         # Verify symlinks were actually created
-        if not (self.test_path / "link_to_dir").is_symlink():
+        if not ((self.test_path / "link_to_dir").is_symlink() and
+                (self.test_path / "link_to_file").is_symlink()):
             self.skipTest("Symlinks not supported on this system")
         
     def tearDown(self):

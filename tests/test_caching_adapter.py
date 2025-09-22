@@ -233,7 +233,10 @@ async def test_filesystem_mtime_invalidation():
         os.utime(test_dir, None)  # Touch the directory itself
 
         # Small delay to ensure mtime changes and file is visible
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
+
+        # Verify the file was actually created
+        assert new_file.exists(), f"New file {new_file} was not created"
         
         # Third scan (should detect change and rescan)
         children3 = await collect_children(cached_adapter, test_node)
