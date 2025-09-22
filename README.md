@@ -1,6 +1,6 @@
 # DazzleTreeLib - Universal Tree Traversal Library
 
-[![Version](https://img.shields.io/github/v/release/djdarcy/DazzleTreeLib?sort=semver&color=blue)](https://github.com/djdarcy/DazzleTreeLib/releases)
+[![Version](https://img.shields.io/github/v/release/djdarcy/dazzle-tree-lib?sort=semver&color=blue)](https://github.com/djdarcy/dazzle-tree-lib/releases)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/djdarcy/DazzleTreeLib/blob/main/LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)]()
