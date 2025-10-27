@@ -7,7 +7,7 @@
 
 DazzleTreeLib is the first Python library with a [universal adapter system](docs/universal-adapters.md) for tree traversal, providing both synchronous and asynchronous tree traversal with a universal interface. Currently optimized for high-performance filesystem operations with 4-5x caching speedup and production-grade error handling, the architecture is designed to support any tree-like data structure - from game development BSTs to JSON manipulation to hierarchical data processing.
 
-> **⚠️ Alpha Release**: This library is in active development. APIs may change between versions. We welcome feedback and contributions!
+> **⚠️ Pre-Alpha Release**: This library is in active development. APIs may change between versions. We welcome feedback and contributions!
 
 ## Why another tree library?
 
