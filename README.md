@@ -73,10 +73,12 @@ For more, see the [detailed comparison](docs/comparison.md) in [docs](/docs)
 ### Installation
 
 ```bash
-pip install dazzletreelib  # Coming soon to PyPI
-# For now, install from source:
-git clone https://github.com/djdarcy/DazzleTreeLib.git
-cd DazzleTreeLib
+# Install from PyPI (recommended)
+pip install dazzletreelib
+
+# Or install from source for development:
+git clone https://github.com/djdarcy/dazzle-tree-lib.git
+cd dazzle-tree-lib
 pip install -e .
 ```
 

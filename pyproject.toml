@@ -42,10 +42,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/djdarcy/DazzleTreeLib"
-Documentation = "https://github.com/djdarcy/DazzleTreeLib#readme"
-Repository = "https://github.com/djdarcy/DazzleTreeLib.git"
-Issues = "https://github.com/djdarcy/DazzleTreeLib/issues"
+Homepage = "https://github.com/djdarcy/dazzle-tree-lib"
+Documentation = "https://github.com/djdarcy/dazzle-tree-lib#readme"
+Repository = "https://github.com/djdarcy/dazzle-tree-lib.git"
+Issues = "https://github.com/djdarcy/dazzle-tree-lib/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
